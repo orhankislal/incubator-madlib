@@ -48,45 +48,55 @@ CREATE TABLE message(
  val INT
 );
 
+CREATE TABLE cur(
+ id int,
+ val INT
+);
+
+CREATE TABLE toupdate(
+ id int,
+ val INT
+);
+
 INSERT INTO message VALUES(0, CAST(0 as INT));
 
 WHILE flag != 0 LOOP
 
 	IF (isFirst = 1)
 	THEN
-		DROP TABLE IF EXISTS cur;
-		CREATE TABLE cur AS
+		TRUNCATE TABLE cur;
+		INSERT INTO cur
 			SELECT message.id AS id, MIN(message.val) AS val
 			FROM message
-			GROUP BY id
-		m4_ifdef(`__POSTGRESQL__', `', `distributed by (id)');
+			GROUP BY message.id
+		;
 		isFirst := 0;
 	ELSE
-		DROP TABLE IF EXISTS message;
-		CREATE TABLE message AS
+		TRUNCATE TABLE message;
+		INSERT INTO message
 			SELECT edge.dest AS id, MIN(toupdate.val + edge.weight) AS val
 			FROM toupdate, edge
 			WHERE edge.src = toupdate.id
 			GROUP BY edge.dest
-		m4_ifdef(`__POSTGRESQL__', `', `distributed by (id)');
+		;
 	END IF;
 
-	DROP TABLE IF EXISTS cur;
-	CREATE TABLE cur AS
+	TRUNCATE TABLE cur;
+	INSERT INTO cur
 		SELECT message.id AS id, MIN(message.val) AS val
 		FROM message
-		GROUP BY id
-	m4_ifdef(`__POSTGRESQL__', `', `distributed by (id)');
+		GROUP BY message.id
+	;
 
-	DROP TABLE IF EXISTS message;
+	TRUNCATE TABLE message;
 
-	DROP TABLE IF EXISTS toupdate;
+	TRUNCATE TABLE toupdate;
 
-	CREATE TABLE toupdate AS
+	INSERT INTO toupdate
 		SELECT cur.id AS id, cur.val AS val
 		FROM cur, next
 		WHERE cur.id = next.id  AND cur.val<next.val
-	m4_ifdef(`__POSTGRESQL__', `', `distributed by (id)');
+	;
 
 	UPDATE next SET
 		val=toupdate.val
@@ -95,16 +105,16 @@ WHILE flag != 0 LOOP
 		WHERE
 		next.id=toupdate.id
 	;
-	DROP TABLE IF EXISTS message;
+	TRUNCATE TABLE message;
 
-	CREATE TABLE message AS
+	INSERT INTO message
 		SELECT edge.dest AS id, MIN(toupdate.val + edge.weight) AS val
 		FROM toupdate, edge
 		WHERE edge.src = toupdate.id
 		GROUP BY edge.dest
-	m4_ifdef(`__POSTGRESQL__', `', `distributed by (id)');
+	;
 
-	DROP TABLE IF EXISTS cur;
+	TRUNCATE TABLE cur;
 
 	flag := (SELECT COUNT (*) FROM toupdate);
 
