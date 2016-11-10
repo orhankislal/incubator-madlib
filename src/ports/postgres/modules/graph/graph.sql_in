@@ -18,103 +18,67 @@ BEGIN
 
 SET client_min_messages TO WARNING;
 
-DROP TABLE IF EXISTS cur_alias;
-
-DROP TABLE IF EXISTS cur;
-
 DROP TABLE IF EXISTS message;
-
-DROP TABLE IF EXISTS next;
-
-DROP TABLE IF EXISTS out_cnts;
-
-DROP TABLE IF EXISTS in_cnts;
-
 DROP TABLE IF EXISTS toupdate;
 
-DROP INDEX IF EXISTS idx_src;
+EXECUTE 'DROP TABLE IF EXISTS '||out_table;
 
-DROP INDEX IF EXISTS idx_dest;
-
-DROP TABLE IF EXISTS next;
-
-CREATE TABLE next AS
-SELECT id AS id, CAST(2147483647 AS INT) AS  val
-FROM vertex
+EXECUTE 'CREATE TABLE '||out_table||' AS
+SELECT id AS id, CAST(2147483647 AS INT) AS  val, ARRAY[]::int[] AS spath
+FROM '||vertex_table
 ;
 
 CREATE TABLE message(
  id int,
- val INT
+ val INT,
+ spath int[]
 );
 
-CREATE TABLE cur(
- id int,
- val INT
-);
 
 CREATE TABLE toupdate(
  id int,
- val INT
+ val INT,
+ spath int[]
 );
 
-INSERT INTO message VALUES(0, CAST(0 as INT));
+EXECUTE 'INSERT INTO message VALUES('||source_vid||', CAST(0 as INT))';
 
 WHILE flag != 0 LOOP
 
 	IF (isFirst = 1)
 	THEN
-		TRUNCATE TABLE cur;
-		INSERT INTO cur
-			SELECT message.id AS id, MIN(message.val) AS val
-			FROM message
-			GROUP BY message.id
-		;
 		isFirst := 0;
 	ELSE
 		TRUNCATE TABLE message;
-		INSERT INTO message
-			SELECT edge.dest AS id, MIN(toupdate.val + edge.weight) AS val
-			FROM toupdate, edge
-			WHERE edge.src = toupdate.id
-			GROUP BY edge.dest
+
+		EXECUTE 'INSERT INTO message
+			SELECT '||edge_table||'.dest AS id, toupdate.val + '||edge_table||'.weight AS val, toupdate.spath AS spath
+			FROM toupdate, '||edge_table||'
+			WHERE '||edge_table||'.src = toupdate.id AND toupdate.val + '||edge_table||'.weight IN (
+				SELECT min(toupdate.val + '||edge_table||'.weight)
+				FROM toupdate, '||edge_table||'
+				WHERE '||edge_table||'.src = toupdate.id
+				GROUP BY '||edge_table||'.dest)'
 		;
+
 	END IF;
-
-	TRUNCATE TABLE cur;
-	INSERT INTO cur
-		SELECT message.id AS id, MIN(message.val) AS val
-		FROM message
-		GROUP BY message.id
-	;
-
-	TRUNCATE TABLE message;
 
 	TRUNCATE TABLE toupdate;
 
-	INSERT INTO toupdate
-		SELECT cur.id AS id, cur.val AS val
-		FROM cur, next
-		WHERE cur.id = next.id  AND cur.val<next.val
+	EXECUTE 'INSERT INTO toupdate
+		SELECT message.id AS id, message.val AS val, array_append(message.spath, '||out_table||'.id) AS spath
+		FROM message, '||out_table||'
+		WHERE message.id = '||out_table||'.id  AND message.val<'||out_table||'.val'
 	;
 
-	UPDATE next SET
-		val=toupdate.val
+	EXECUTE 'UPDATE '||out_table||' SET
+		val=toupdate.val,
+		spath=toupdate.spath
 		FROM
 		toupdate
 		WHERE
-		next.id=toupdate.id
+		'||out_table||'.id=toupdate.id'
 	;
-	TRUNCATE TABLE message;
-
-	INSERT INTO message
-		SELECT edge.dest AS id, MIN(toupdate.val + edge.weight) AS val
-		FROM toupdate, edge
-		WHERE edge.src = toupdate.id
-		GROUP BY edge.dest
-	;
-
-	TRUNCATE TABLE cur;
 
 	flag := (SELECT COUNT (*) FROM toupdate);
 
