@@ -24,7 +24,7 @@ DROP TABLE IF EXISTS toupdate;
 EXECUTE 'DROP TABLE IF EXISTS '||out_table;
 
 EXECUTE 'CREATE TABLE '||out_table||' AS
-SELECT id AS id, CAST(2147483647 AS INT) AS  val, ARRAY[]::int[] AS spath
+SELECT id::int AS id, CAST(2147483647 AS INT) AS  val, "{}"::int[] AS spath
 FROM '||vertex_table
 ;
 
@@ -66,7 +66,7 @@ WHILE flag != 0 LOOP
 	TRUNCATE TABLE toupdate;
 
 	EXECUTE 'INSERT INTO toupdate
-		SELECT message.id AS id, message.val AS val, array_append(message.spath, '||out_table||'.id) AS spath
+		SELECT DISTINCT ON (message.id) message.id AS id, message.val AS val, array_append(message.spath, '||out_table||'.id) AS spath
 		FROM message, '||out_table||'
 		WHERE message.id = '||out_table||'.id  AND message.val<'||out_table||'.val'
 	;
