@@ -24,7 +24,7 @@ DROP TABLE IF EXISTS toupdate;
 EXECUTE 'DROP TABLE IF EXISTS '||out_table;
 
 EXECUTE 'CREATE TABLE '||out_table||' AS
-SELECT id::int AS id, CAST(2147483647 AS INT) AS  val, "{}"::int[] AS spath
+SELECT id::int AS id, CAST(2147483647 AS INT) AS  val, ARRAY[]::int[] AS spath
 FROM '||vertex_table
 ;
 
@@ -52,13 +52,17 @@ WHILE flag != 0 LOOP
 		TRUNCATE TABLE message;
 
 		EXECUTE 'INSERT INTO message
-			SELECT '||edge_table||'.dest AS id, toupdate.val + '||edge_table||'.weight AS val, toupdate.spath AS spath
-			FROM toupdate, '||edge_table||'
-			WHERE '||edge_table||'.src = toupdate.id AND toupdate.val + '||edge_table||'.weight IN (
-				SELECT min(toupdate.val + '||edge_table||'.weight)
+			SELECT '||edge_table||'.dest AS id, x.val AS val,
+				toupdate.spath AS spath
+			FROM toupdate, '||edge_table||', (
+				SELECT '||edge_table||'.dest AS id,
+					min(toupdate.val + '||edge_table||'.weight) AS val
 				FROM toupdate, '||edge_table||'
-				WHERE '||edge_table||'.src = toupdate.id
-				GROUP BY '||edge_table||'.dest)'
+				WHERE '||edge_table||'.src=toupdate.id
+				GROUP BY '||edge_table||'.dest) x
+			WHERE '||edge_table||'.src = toupdate.id
+				AND '||edge_table||'.dest = x.id
+				AND toupdate.val + '||edge_table||'.weight = x.val'
 		;
 
 	END IF;
