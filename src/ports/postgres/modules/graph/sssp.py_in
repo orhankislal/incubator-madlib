@@ -149,7 +149,7 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE
 				{out_table}.{vertex_id}=oldupdate.id
 				"""!>)
-			plpy.info(sql)
+			plpy.info(sql.format(**locals()))
 			plpy.execute(sql.format(**locals()))
 			plpy.execute("TRUNCATE TABLE {0}".format(newupdate))
 			sql = ("""
