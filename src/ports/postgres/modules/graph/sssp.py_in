@@ -74,7 +74,6 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
                                             default_args)
 		if vertex_id is None:
 			vertex_id = "id"
-		plpy.info("here")
 		src = edge_params["src"]
 		dest = edge_params["dest"]
 		weight = edge_params["weight"]
@@ -83,13 +82,10 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			<!"DISTRIBUTED BY ({0})".format(vertex_id)!>)
 		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY (id)"!>)
-		plpy.info("here")
 		validate_graph_coding(vertex_table, vertex_id, edge_table,
 			edge_params, source_vertex, out_table)
-		plpy.info("here")
 		plpy.execute(" DROP TABLE IF EXISTS {0},{1},{2}".format(
 			message,oldupdate,newupdate))
-		plpy.info("here")
 		plpy.execute(
 			""" CREATE TABLE {out_table} AS
 				SELECT {vertex_id}::INT AS {vertex_id},
@@ -121,7 +117,6 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			""".format(**locals())!>,
 			<!''!>)
 		plpy.execute(sql_index)
-		plpy.info("here")
 		plpy.execute(
 			""" INSERT INTO {oldupdate}
 				VALUES({source_vertex},0,{source_vertex})
@@ -130,7 +125,6 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 		v_cnt = plpy.execute("SELECT count(*) FROM {vertex_table}".
 			format(**locals()))[0]['count']
 		for i in range(0,v_cnt+1):
-			plpy.info("here")
 			sql = m4_ifdef(<!__HAWQ__!>,
 				<!"""
 				TRUNCATE TABLE {temp_table};
@@ -155,8 +149,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE
 				{out_table}.{vertex_id}=oldupdate.id
 				"""!>)
+			plpy.info(sql)
 			plpy.execute(sql.format(**locals()))
-			plpy.info("here")
 			plpy.execute("TRUNCATE TABLE {0}".format(newupdate))
 			sql = ("""
 				INSERT INTO {newupdate}
@@ -181,7 +175,7 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE message.id = out_table.{vertex_id}
 					AND message.val<out_table.{weight}
 					""".format(**locals()))
-			plpy.info("here")
+			plpy.info(sql)
 			ret = plpy.execute(sql)
 			if ret.nrows() == 0:
 				break
