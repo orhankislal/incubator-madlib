@@ -60,7 +60,7 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 	with MinWarning("warning"):
 
 		INT_MAX = 2147483647
-		EPSILON = 1.0E-06
+		EPSILON = 0.000001
 
 		message = unique_string(desp='message')
 
