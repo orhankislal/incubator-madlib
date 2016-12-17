@@ -138,7 +138,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				DROP TABLE {out_table};
 				ALTER TABLE {temp_table} RENAME TO {out_table};
 				CREATE TABLE {temp_table} (
-					{vertex_id} INT, {weight} INT, parent INT) {distribution};
+					{vertex_id} INT, {weight} DOUBLE PRECISION, parent INT)
+					{distribution};
 				"""!>,
 				<!"""
 				UPDATE {out_table} SET
@@ -149,10 +150,7 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE
 				{out_table}.{vertex_id}=oldupdate.id
 				"""!>)
-			plpy.info(sql.format(**locals()))
-			plpy.info("here1")
 			plpy.execute(sql.format(**locals()))
-			plpy.info("here2")
 			plpy.execute("TRUNCATE TABLE {0}".format(newupdate))
 			sql = ("""
 				INSERT INTO {newupdate}
@@ -177,7 +175,6 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE message.id = out_table.{vertex_id}
 					AND message.val<out_table.{weight}
 					""".format(**locals()))
-			plpy.info(sql)
 			ret = plpy.execute(sql)
 			if ret.nrows() == 0:
 				break
