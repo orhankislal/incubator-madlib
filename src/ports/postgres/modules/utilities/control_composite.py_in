@@ -206,11 +206,11 @@ class IterationControllerComposite:
             ]
 
             cast_para = [None if self.new_state is None else self.new_state[i]
-                         for i in ('centroids', 'old_centroid_ids', 'objective_fn',
-                                    'cluster_variance', 'frac_reassigned')]
+                         for i in ('centroids', 'old_centroid_ids', 'cluster_variance',
+                                    'objective_fn', 'frac_reassigned')])
             cast_para.extend([None if self.old_state is None else self.old_state[i]
-                             for i in ('centroids', 'old_centroid_ids', 'objective_fn',
-                                        'cluster_variance', 'frac_reassigned')])
+                             for i in ('centroids', 'old_centroid_ids', 'cluster_variance',
+                                        'objective_fn', 'frac_reassigned')])
 
             updateKwargs.update(curr_state=cast_str, old_state=cast_str_old)
             self.old_state = self.new_state
@@ -220,6 +220,7 @@ class IterationControllerComposite:
                     {iteration} AS _iteration,
                     {schema_madlib}.array_to_1d((_state).centroids) AS centroids,
                     (_state).old_centroid_ids,
+                    (_state).cluster_variance,
                     (_state).objective_fn,
                     (_state).frac_reassigned
                 FROM
