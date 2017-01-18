@@ -234,7 +234,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 		# Bellman-Ford should converge in |V|-1 iterations.
 		if i == v_cnt:
-			plpy.warning("Graph SSSP: Detected a negative cycle in the graph.")
+			plpy.execute("DROP TABLE IF EXISTS {out_table}")
+			plpy.error("Graph SSSP: Detected a negative cycle in the graph.")
 
 		m4_ifdef(<!__HAWQ__!>,
 			plpy.execute("DROP TABLE {temp_table} ".format(**locals())), <!''!>)
