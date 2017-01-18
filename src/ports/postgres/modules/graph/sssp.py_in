@@ -98,7 +98,9 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				SELECT {vertex_id} AS {vertex_id},
 					CAST('Infinity' AS DOUBLE PRECISION) AS {weight},
 					NULL::INT AS parent
-				FROM {vertex_table} {distribution} """.format(**locals()))
+				FROM {vertex_table}
+				WHERE {vertex_id} IS NOT NULL
+				{distribution} """.format(**locals()))
 
 		# We keep 2 update tables and alternate them during the execution.
 		# This is necessary since we need to know which vertices are updated in
@@ -140,8 +142,9 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				VALUES({source_vertex},0,{source_vertex})
 			""".format(**locals()))
 
-		v_cnt = plpy.execute("SELECT count(*) FROM {vertex_table}".
-			format(**locals()))[0]['count']
+		v_cnt = plpy.execute(
+			"""SELECT count(*) FROM {vertex_table}
+			WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
 		for i in range(0,v_cnt+1):
 
 			# Apply the updates calculated in the last iteration
@@ -320,7 +323,19 @@ def validate_graph_coding(vertex_table, vertex_id, edge_table, edge_params,
 	if src_exists.nrows() == 0:
 		plpy.error(
 			"""Graph SSSP: Source vertex {source_vertex} is not present in the
-			vertex table {vertex_table}""".format(**locals()))
+			vertex table {vertex_table} """.format(**locals()))
+
+	vt_error = plpy.execute(
+		""" SELECT {vertex_id}
+			FROM {vertex_table}
+			WHERE {vertex_id} IS NOT NULL
+			GROUP BY {vertex_id}
+			HAVING count(*) > 1 """.format(**locals()))
+
+	if vt_error.nrows() != 0:
+		plpy.error(
+			"""Graph SSSP: Source vertex table {vertex_table}
+			contains duplicate vertex id's """.format(**locals()))
 
 	return None
 
