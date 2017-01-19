@@ -22,13 +22,13 @@ This module implements various graph algorithms that are used in a number of app
 
 \section{Single Source Shortest Path} \label{sec:graph:sssp}
 
-Given a graph and a source vertex, single source shortest path (SSSP) algorithm finds a path for every vertex such that the the sum of the weights of its constituent edges is minimized.
+Given a graph and a source vertex, single source shortest path (SSSP) algorithm finds a path for every vertex such that the sum of the weights of its constituent edges is minimized.
 
 Shortest path is defined as follows. Let $e_{i,j}$ be the edge from vertex $i$ to vertex $j$ and $w_{i,j}$ be its weight. Given a graph G, the shortest path from $s$ to $d$ is $P = (v_1, v_2 \dots, v_n)$ (where $v_1=s$ and $v_n=d$) that over all possible $n$ minimizes the sum $ \sum _{i=1}^{n-1}f(e_{i,i+1})$.
 
 % \subsection{Bellman Ford Algorithm}
 
-Bellman-Ford Algorithm \cite{bellman1958routing,ford1956network} is based on the following idea: We start with a naive approximation for the cost of reaching every vertex. At each iteration, these values are refined based on the edge list and the existing approximations. If there are no refinements at any given step, the algorithm returns the calculated results. If the algorithm does not converge in $|V|-1$ iterations, this indicates athe existence of a negative cycle in the graph.
+Bellman-Ford Algorithm \cite{bellman1958routing,ford1956network} is based on the following idea: We start with a naive approximation for the cost of reaching every vertex. At each iteration, these values are refined based on the edge list and the existing approximations. If there are no refinements at any given step, the algorithm returns the calculated results. If the algorithm does not converge in $|V|-1$ iterations, this indicates the existence of a negative cycle in the graph.
 
 
 \begin{algorithm}[SSSP$(V,E,start)$] \label{alg:sssp}
@@ -60,7 +60,7 @@ Bellman-Ford Algorithm \cite{bellman1958routing,ford1956network} is based on the
 \item toupdate: iter -> (id -> (val,parent)). The set of updates.
 \end{description}
 
-Changes from the standart Bellman Ford algorithm:
+Changes from the standard Bellman-Ford algorithm:
 
 \begin{description}
 \item Line~\ref{alg:sssp:update}: We only check the vertices that have been updated in the last iteration.
