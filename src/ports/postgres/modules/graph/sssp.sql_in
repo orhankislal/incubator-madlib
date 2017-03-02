@@ -18,12 +18,12 @@
  * under the License.
  *
  *
- * @file graph.sql_in
+ * @file sssp.sql_in
  *
  * @brief SQL functions for graph analytics
  * @date Nov 2016
  *
- * @sa Provides various graph algorithms.
+ * @sa Provides single source shortest path algorithm.
  *
  *//* ----------------------------------------------------------------------- */
 m4_include(`SQLCommon.m4')

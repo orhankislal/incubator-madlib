@@ -1,0 +1,189 @@
+# coding=utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# All Pairs Shortest Path
+
+# Please refer to the apsp.sql_in file for the documentation
+
+"""
+@file apsp.py_in
+
+@namespace graph
+"""
+
+
+import plpy
+from utilities.control import MinWarning
+from utilities.utilities import _assert
+from utilities.utilities import extract_keyvalue_params
+from utilities.utilities import unique_string
+from utilities.validate_args import get_cols
+from utilities.validate_args import unquote_ident
+from utilities.validate_args import table_exists
+from utilities.validate_args import columns_exist_in_table
+from utilities.validate_args import table_is_empty
+
+m4_changequote(`<!', `!>')
+
+def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
+		edge_args, out_table, **kwargs):
+	"""
+    Single source shortest path function for graphs using the Bellman-Ford
+    algorhtm [1].
+    Args:
+        @param vertex_table     Name of the table that contains the vertex data.
+        @param vertex_id        Name of the column containing the vertex ids.
+        @param edge_table       Name of the table that contains the edge data.
+        @param edge_args        A comma-delimited string containing multiple
+        						named arguments of the form "name=value".
+        @param out_table   	    Name of the table to store the result of SSSP.
+
+    [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
+    """
+
+	with MinWarning("warning"):
+		params_types = {'src': str, 'dest': str, 'weight': str}
+		default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
+		edge_params = extract_keyvalue_params(edge_args,
+                                            params_types,
+                                            default_args)
+		if vertex_id is None:
+			vertex_id = "id"
+
+		src = edge_params["src"]
+		dest = edge_params["dest"]
+		weight = edge_params["weight"]
+
+		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+			<!"DISTRIBUTED BY ({0})".format(src)!>)
+		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+			<!"DISTRIBUTED BY (id)"!>)
+
+		# validate_graph_coding(vertex_table, vertex_id, edge_table,
+		# 	edge_params, source_vertex, out_table)
+
+		plpy.execute(
+			""" CREATE TABLE {out_table} AS
+				SELECT v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
+					CAST('Infinity' AS DOUBLE PRECISION) AS {weight},
+					NULL::INT AS next
+				FROM {vertex_table} v1, {vertex_table} v2
+				WHERE v1.{vertex_id} IS NOT NULL AND v2.{vertex_id} IS NOT NULL
+				{distribution} """.format(**locals()))
+
+		# GPDB and HAWQ have distributed by clauses to help them with indexing.
+		# For Postgres we add the indices manually.
+		sql_index = m4_ifdef(<!__POSTGRESQL__!>,
+			<!""" CREATE INDEX ON {out_table} ({src});
+			""".format(**locals())!>, <!''!>)
+		plpy.execute(sql_index)
+
+		# The source can be reached with 0 cost and next is itself.
+		plpy.execute(
+			""" UPDATE {out_table} SET
+			{weight} = 0, next = {vertex_id}
+			FROM {vertex_table}
+			WHERE {out_table}.{src} = {vertex_id}
+			AND {out_table}.{dest} = {vertex_id}
+			""".format(**locals()))
+
+		# Distance = 1: every edge means there is a path from src to dest
+		plpy.execute(
+			""" UPDATE {out_table} SET
+			{weight} = edge.{weight}, next = edge.{dest}
+			FROM {edge_table} AS edge
+			WHERE {out_table}.{src} = edge.{src}
+			AND {out_table}.{dest} = edge.{dest}
+			AND {out_table}.{weight} > edge.{weight}
+			""".format(**locals()))
+
+		v_cnt = plpy.execute(
+			"""SELECT count(*) FROM {vertex_table}
+			WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
+
+		# For each vertex v,
+		#	For each s,t
+		# 		check if there is a shorter path from s to t through v
+		# for i in range(0,v_cnt):
+
+		# main_sql = """
+		# 	FOR i IN SELECT {vertex_id} FROM {vertex_table} LOOP
+		# 		UPDATE {out_table}
+		# 		SET {weight} = col.{weight} + row.{weight}, next = col.next
+		# 		FROM
+		# 			(SELECT * FROM {out_table} WHERE {src} = i
+		# 			AND {weight}!='Infinity') AS row,
+		# 			(SELECT * FROM {out_table} WHERE {dest} = i
+		# 			AND {weight}!='Infinity') AS col
+		# 		WHERE {out_table}.{src} = col.{src}
+		# 			AND {out_table}.{dest} = row.{dest}
+		# 			AND col.{weight} + row.{weight} < {out_table}.{weight};
+		# 	END LOOP;
+		# 	""".format(**locals())
+
+		# plpy.execute(main_sql)
+
+		plpy.execute("""SELECT {schema_madlib}.__graph_apsp_loop('{vertex_table}','{vertex_id}','{out_table}','{src}','{dest}','{weight}')""".format(**locals()))
+
+	return None
+
+def graph_apsp_get_path(schema_madlib, apsp_table,
+	source_vertex, dest_vertex, **kwargs):
+	"""
+	Helper function that can be used to get the shortest path between any 2
+	vertices
+    Args:
+    	@param apsp_table		Name of the table that contains the APSP
+    							output.
+        @param source_vertex	The vertex that will be the source of the
+            					desired path.
+        @param dest_vertex		The vertex that will be the destination of the
+            					desired path.
+	"""
+
+	cur_src = source_vertex
+
+	rows = get_cols(apsp_table)
+	src_row = rows[0]
+	dest_row = rows[1]
+
+	ret = [source_vertex]
+	plan_name = unique_string(desp='plan')
+
+	plpy.execute(""" PREPARE {plan_name} (int) AS
+		SELECT next FROM {apsp_table} WHERE {src_row} = $1 AND {dest_row} = $2
+		LIMIT 1 """.format(**locals()))
+	sql = "EXECUTE {plan_name} ({cur_src},{dest_vertex})"
+	next = plpy.execute(sql.format(**locals()))
+
+	if next.nrows() == 0:
+		plpy.error("""Graph APSP: Vertex {source_vertex} or {dest_vertex} do not exist
+			in the APSP table {apsp_table}""".format(**locals()))
+
+	next = next[0]['next']
+	if next is None:
+		plpy.error("""Graph APSP: There isn't a path from vertex {source_vertex} to vertex {dest_vertex} """.format(**locals()))
+
+	while next != dest_vertex:
+		ret.append(next)
+		cur_src = next
+		next = plpy.execute(sql.format(**locals()))[0]['next']
+
+	ret.append(dest_vertex)
+	return ret

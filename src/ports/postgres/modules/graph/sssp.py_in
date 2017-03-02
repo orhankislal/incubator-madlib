@@ -470,6 +470,7 @@ def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table,
         @param dest_vertex  The vertex that will be the destination of the
                             desired path.
         @param path_table   Name of the output table that contains the path.
+
 	"""
 	with MinWarning("warning"):
 		_validate_get_path(sssp_table, dest_vertex, path_table)
