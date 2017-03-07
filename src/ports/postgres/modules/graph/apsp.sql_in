@@ -56,14 +56,14 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_loop(
     vertex_table            TEXT,
     vertex_id               TEXT,
     out_table               TEXT,
-    src 					TEXT,
-    dest 					TEXT,
-    weight 					TEXT
+    src                     TEXT,
+    dest                    TEXT,
+    weight                  TEXT
 
 ) RETURNS VOID AS $$
 
 DECLARE
-    arow record;
+    arow INT;
 BEGIN
 	FOR arow IN EXECUTE
 		$sql$ SELECT $sql$ || vertex_id || $sql$ FROM $sql$ || vertex_table || $sql$

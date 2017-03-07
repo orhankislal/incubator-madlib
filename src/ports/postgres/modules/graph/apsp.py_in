@@ -113,14 +113,19 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 			AND {out_table}.{weight} > edge.{weight}
 			""".format(**locals()))
 
-		v_cnt = plpy.execute(
-			"""SELECT count(*) FROM {vertex_table}
-			WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
+		# v_cnt = plpy.execute(
+		# 	"""SELECT count(*) FROM {vertex_table}
+		# 	WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
+
+		# vids = plpy.execute(
+		#  	"""SELECT {vertex_id} FROM {vertex_table}
+		#  	WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0][vertex_id]
 
 		# For each vertex v,
 		#	For each s,t
 		# 		check if there is a shorter path from s to t through v
-		# for i in range(0,v_cnt):
+
+		# for i in vids:
 
 		# main_sql = """
 		# 	FOR i IN SELECT {vertex_id} FROM {vertex_table} LOOP
@@ -139,7 +144,22 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 		# plpy.execute(main_sql)
 
-		plpy.execute("""SELECT {schema_madlib}.__graph_apsp_loop('{vertex_table}','{vertex_id}','{out_table}','{src}','{dest}','{weight}')""".format(**locals()))
+		# plpy.execute("""SELECT {schema_madlib}.__graph_apsp_loop('{vertex_table}','{vertex_id}','{out_table}','{src}','{dest}','{weight}')""".format(**locals()))
+
+		while 1:
+			updates = plpy.execute(
+				"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
+						SELECT out.{src}, edge.{dest},
+							min(out.{weight}+edge.{weight}) AS {weight}
+						FROM {out_table} AS out, {edge_table} AS edge
+						WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
+							AND out.{src}!=out.{dest}
+						GROUP BY out.{src},edge.{dest})x
+					WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
+						x.{weight} < out.{weight}
+				""".format(**locals()))
+			if updates.nrows() == 0:
+				break
 
 	return None
 
