@@ -41,6 +41,73 @@ from utilities.validate_args import table_is_empty
 
 m4_changequote(`<!', `!>')
 
+def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
+		edge_args, out_table, **kwargs):
+
+	with MinWarning("warning"):
+		params_types = {'src': str, 'dest': str, 'weight': str}
+		default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
+		edge_params = extract_keyvalue_params(edge_args,
+                                            params_types,
+                                            default_args)
+		if vertex_id is None:
+			vertex_id = 'id'
+
+		src = edge_params["src"]
+		dest = edge_params["dest"]
+		weight = edge_params["weight"]
+
+
+		# distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+		# 	<!"DISTRIBUTED BY ({0})".format(src)!>)
+		# local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+		# 	<!"DISTRIBUTED BY (id)"!>)
+
+		# validate_graph_coding(vertex_table, vertex_id, edge_table,
+		# 	edge_params, source_vertex, out_table)
+
+		# plpy.execute(
+		# 	""" CREATE TABLE {out_table} ({src} integer, {dest} integer, {weight} DOUBLE PRECISION) """.format(**locals()))
+
+		vres = plpy.execute("SELECT {vertex_id} FROM {vertex_table}".format(**locals()))
+		vset = [item[vertex_id] for item in vres]
+
+		eres = plpy.execute("SELECT {src}, {dest}, {weight} FROM {edge_table}".
+			format(**locals()))
+		#plpy.info(eres)
+
+		v_cnt = vres.nrows()
+		# FIXME this assumes the vertices go 0, 1, 2 ...
+		out = [[99999999 if x!=y else 0 for x in range(v_cnt)] for y in range(v_cnt)]
+
+		for item in eres:
+			# plpy.info(item)
+			out[item[src]][item[dest]] = item[weight]
+
+		# plpy.info(out)
+
+		for k in vset:
+			for i in vset:
+				for j in vset:
+					if out[i][j] > out[i][k] + out[k][j]:
+						out[i][j] = out[i][k] + out[k][j]
+
+		sql_ins = """ CREATE TABLE {out_table} ({src} integer, {dest} integer, {weight} DOUBLE PRECISION);
+		INSERT INTO {out_table} ({src},{dest},{weight}) VALUES """.format(**locals())
+
+		for i in vset:
+			for j in vset:
+				sql_ins += "({0},{1},{2}),".format(i,j,out[i][j])
+
+		sql_ins = sql_ins[:-1] + ";"
+
+		# plpy.info(sql_ins)
+		plpy.execute(sql_ins)
+
+
+		# plpy.info(out)
+	return
+
 def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		edge_args, out_table, **kwargs):
 	"""
@@ -56,6 +123,9 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 
     [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
     """
+
+	graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table, edge_args, out_table)
+	return
 
 	with MinWarning("warning"):
 		params_types = {'src': str, 'dest': str, 'weight': str}
@@ -145,21 +215,38 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		# plpy.execute(main_sql)
 
 		# plpy.execute("""SELECT {schema_madlib}.__graph_apsp_loop('{vertex_table}','{vertex_id}','{out_table}','{src}','{dest}','{weight}')""".format(**locals()))
+		path = False
+		if path:
+			while 1:
+				updates = plpy.execute(
+					"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
+							SELECT out.{src}, edge.{dest},
+								min(out.{weight}+edge.{weight}) AS {weight}
+							FROM {out_table} AS out, {edge_table} AS edge
+							WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
+								AND out.{src}!=out.{dest}
+							GROUP BY out.{src},edge.{dest})x
+						WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
+							x.{weight} < out.{weight}
+					""".format(**locals()))
+				if updates.nrows() == 0:
+					break
+		else:
+			while 1:
+				updates = plpy.execute(
+					"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
+							SELECT out.{src}, edge.{dest},
+								min(out.{weight}+edge.{weight}) AS {weight}
+							FROM {out_table} AS out, {edge_table} AS edge
+							WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
+								AND out.{src}!=out.{dest}
+							GROUP BY out.{src},edge.{dest})x
+						WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
+							x.{weight} < out.{weight}
+					""".format(**locals()))
+				if updates.nrows() == 0:
+					break
 
-		while 1:
-			updates = plpy.execute(
-				"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
-						SELECT out.{src}, edge.{dest},
-							min(out.{weight}+edge.{weight}) AS {weight}
-						FROM {out_table} AS out, {edge_table} AS edge
-						WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
-							AND out.{src}!=out.{dest}
-						GROUP BY out.{src},edge.{dest})x
-					WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
-						x.{weight} < out.{weight}
-				""".format(**locals()))
-			if updates.nrows() == 0:
-				break
 
 	return None
 
@@ -207,3 +294,5 @@ def graph_apsp_get_path(schema_madlib, apsp_table,
 
 	ret.append(dest_vertex)
 	return ret
+
+
