@@ -41,6 +41,162 @@ from utilities.validate_args import table_is_empty
 
 m4_changequote(`<!', `!>')
 
+def graph_sssp2(schema_madlib, vertex_table, vertex_id, edge_table,
+		edge_args, source_vertex, out_table, grp, **kwargs):
+
+	with MinWarning("warning"):
+
+		INT_MAX = 2147483647
+		EPSILON = 0.000001
+
+		message = unique_string(desp='message')
+
+		oldupdate = unique_string(desp='oldupdate')
+		newupdate = unique_string(desp='newupdate')
+
+		params_types = {'src': str, 'dest': str, 'weight': str}
+		default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
+		edge_params = extract_keyvalue_params(edge_args,
+                                            params_types,
+                                            default_args)
+		if vertex_id is None:
+			vertex_id = "id"
+
+		src = edge_params["src"]
+		dest = edge_params["dest"]
+		weight = edge_params["weight"]
+
+		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+			<!"DISTRIBUTED BY ({0})".format(vertex_id)!>)
+		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+			<!"DISTRIBUTED BY (id)"!>)
+
+		validate_graph_coding(vertex_table, vertex_id, edge_table,
+			edge_params, source_vertex, out_table)
+
+		plpy.execute(" DROP TABLE IF EXISTS {0},{1},{2}".format(
+			message,oldupdate,newupdate))
+
+		# We keep a table of every vertex, the minimum cost to that destination
+		# seen so far and the parent to this vertex in the associated shortest
+		# path. This table will be updated throughtout the execution.
+		plpy.execute(
+			""" CREATE TABLE {out_table} (
+					{vertex_id} INT, {weight} DOUBLE PRECISION,
+					parent INT, {grp} INT)
+				{local_distribution} """.format(**locals()))
+
+		# We keep 2 update tables and alternate them during the execution.
+		# This is necessary since we need to know which vertices are updated in
+		# the previous iteration to calculate the next set of updates.
+		plpy.execute(
+			""" CREATE TEMP TABLE {oldupdate}(
+				id INT, val DOUBLE PRECISION, parent INT, grp INT)
+				{local_distribution}
+				""".format(**locals()))
+		plpy.execute(
+			""" CREATE TEMP TABLE {newupdate}(
+				id INT, val DOUBLE PRECISION, parent INT, grp INT)
+				{local_distribution}
+				""".format(**locals()))
+
+		# Since HAWQ does not allow us to update, we create a new table and
+		# rename at every iteration
+		# temp_table = unique_string(desp='temp')
+		# sql = m4_ifdef(<!__HAWQ__!>,
+		# 	""" CREATE TABLE {temp_table} (
+		# 			{vertex_id} INT, {weight} DOUBLE PRECISION, parent INT)
+		# 			{distribution};
+		# 	""",  <!''!>)
+		# plpy.execute(sql.format(**locals()))
+
+		# GPDB and HAWQ have distributed by clauses to help them with indexing.
+		# For Postgres we add the indices manually.
+		sql_index = m4_ifdef(<!__POSTGRESQL__!>,
+			<!""" CREATE INDEX ON {out_table} ({vertex_id});
+				CREATE INDEX ON {oldupdate} (id);
+				CREATE INDEX ON {newupdate} (id);
+			""".format(**locals())!>,
+			<!''!>)
+		plpy.execute(sql_index)
+
+		grp_max = plpy.execute("""SELECT max({grp}) AS max FROM {edge_table}
+			""".format(**locals()))[0]['max']
+
+		plpy.info(grp_max)
+		# The source can be reached with 0 cost and it has itself as the parent.
+		for i in range(0,grp_max+1):
+
+			plpy.execute(
+				""" INSERT INTO {out_table}
+				SELECT {vertex_id},
+				CAST('Infinity' AS DOUBLE PRECISION) AS {weight},
+				NULL::INT AS parent, {i} AS {grp}
+				FROM {vertex_table}
+				""".format(**locals()))
+			plpy.execute(
+				""" INSERT INTO {oldupdate}
+					VALUES({source_vertex},0,{source_vertex},{i})
+				""".format(**locals()))
+		plpy.info("here1")
+		v_cnt = plpy.execute(
+			"""SELECT count(*) FROM {vertex_table}
+			WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
+
+		for i in range(0,v_cnt+1):
+			plpy.info("here2")
+
+			# Apply the updates calculated in the last iteration
+			sql = ("""
+				UPDATE {out_table} SET
+				{weight}=oldupdate.val,
+				parent=oldupdate.parent
+				FROM
+				{oldupdate} AS oldupdate
+				WHERE
+				{out_table}.{vertex_id}=oldupdate.id AND
+				{out_table}.{grp}=oldupdate.{grp} AND
+				{out_table}.{weight}>oldupdate.val
+				""")
+
+			ret = plpy.execute(sql.format(**locals()))
+			plpy.info(ret.nrows())
+			if ret.nrows() == 0:
+				break
+			plpy.execute("TRUNCATE TABLE {0}".format(newupdate))
+
+			sql = (""" INSERT INTO {newupdate}
+				SELECT {dest} AS id,
+					{oldupdate}.val + {edge_table}.{weight} AS val,
+					{oldupdate}.id AS parent,
+					{edge_table}.{grp} AS {grp}
+				FROM {edge_table} INNER JOIN {oldupdate}
+					ON ({edge_table}.{src} = {oldupdate}.id
+						AND {edge_table}.{grp} = {oldupdate}.{grp});
+
+				DELETE FROM {newupdate} USING {newupdate} alias
+				WHERE {newupdate}.id=alias.id
+					AND {newupdate}.grp=alias.grp
+					AND {newupdate}.val>alias.val
+				""".format(**locals()))
+			plpy.info(sql)
+			ret = plpy.execute(sql)
+
+
+			# Swap the update tables for the next iteration
+			tmp = oldupdate
+			oldupdate = newupdate
+			newupdate = tmp
+
+		if i == v_cnt:
+			# plpy.execute("DROP TABLE IF EXISTS {out_table}".format(**locals()))
+			plpy.info("Graph SSSP: Detected a negative cycle in the graph.")
+
+		# m4_ifdef(<!__HAWQ__!>,
+		# 	plpy.execute("DROP TABLE {temp_table} ".format(**locals())), <!''!>)
+
+	return None
+
 def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 		edge_args, source_vertex, out_table, **kwargs):
 	"""
@@ -57,7 +213,9 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 
     [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
     """
-
+	graph_sssp2(schema_madlib, vertex_table, vertex_id, edge_table,
+		edge_args, source_vertex, out_table, 'grp')
+	return
 	with MinWarning("warning"):
 
 		INT_MAX = 2147483647
