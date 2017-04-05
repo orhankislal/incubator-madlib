@@ -253,21 +253,36 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.graph_sssp(
     edge_table              TEXT,
     edge_args               TEXT,
     source_vertex           INT,
-    out_table               TEXT
+    out_table               TEXT,
+    grouping_cols           TEXT
 
 ) RETURNS VOID AS $$
     PythonFunction(graph, sssp, graph_sssp)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 -------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.graph_sssp(
+    vertex_table            TEXT,
+    vertex_id               TEXT,
+    edge_table              TEXT,
+    edge_args               TEXT,
+    source_vertex           INT,
+    out_table               TEXT
+
+) RETURNS VOID AS $$
+     SELECT MADLIB_SCHEMA.graph_sssp($1, $2, $3, $4, $5, $6, NULL);
+$$ LANGUAGE sql VOLATILE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+-------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.graph_sssp_get_path(
     sssp_table             TEXT,
-    dest_vertex            INT
+    dest_vertex            INT,
+    path_table             TEXT
 
-) RETURNS INT[] AS $$
+) RETURNS VOID AS $$
     PythonFunction(graph, sssp, graph_sssp_get_path)
 $$ LANGUAGE plpythonu VOLATILE
-m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 -------------------------------------------------------------------------
 
 -- Online help
