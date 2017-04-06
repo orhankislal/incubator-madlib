@@ -20,7 +20,9 @@
  *//* ----------------------------------------------------------------------- */
 
 
-DROP TABLE IF EXISTS vertex,edge,out,vertex_alt,edge_alt,out_alt,out_gr;
+DROP TABLE IF EXISTS vertex,edge,out,out_summary,out_path,
+	vertex_alt,edge_alt,out_alt,out_alot_summary,
+	edge_gr,out_gr,out_gr_summary,out_gr_path;
 
 
 CREATE TABLE vertex(
@@ -30,7 +32,7 @@ CREATE TABLE vertex(
 CREATE TABLE edge(
                   src INTEGER,
                   dest INTEGER,
-                  weight INTEGER
+                  weight DOUBLE PRECISION
                 );
 
 INSERT INTO vertex VALUES
@@ -65,7 +67,7 @@ SELECT * FROM out;
 SELECT assert(weight = 3, 'Wrong output in graph (SSSP)') FROM out WHERE id = 6;
 SELECT assert(parent = 5, 'Wrong parent in graph (SSSP)') FROM out WHERE id = 6;
 
-SELECT graph_sssp_get_path('out',6);
+SELECT graph_sssp_get_path('out',6,'out_path');
 
 CREATE TABLE vertex_alt AS SELECT id AS v_id FROM vertex;
 CREATE TABLE edge_alt AS SELECT src AS e_src, dest, weight AS e_weight FROM edge;
@@ -103,3 +105,5 @@ SELECT assert(parent = 2, 'Wrong parent in graph (SSSP)')
 
 SELECT assert(weight = 'Infinity', 'Wrong output in graph (SSSP)')
 	FROM out_gr WHERE id = 7 AND grp = 1;
+
+SELECT graph_sssp_get_path('out',5,'out_gr_path');
