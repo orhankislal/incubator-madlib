@@ -134,6 +134,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY ({0})".format(vertex_id)!>)
+		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
+			<!"DISTRIBUTED BY (id)"!>)
 
 		is_hawq = m4_ifdef(<!__HAWQ__!>, <!True!>, <!False!>)
 		validate_sssp(vertex_table, vertex_id, edge_table,
@@ -204,13 +206,13 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			""" CREATE TEMP TABLE {oldupdate} AS ( SELECT
 					{src} AS id, {weight},
 					{src} AS parent {comma_grp} FROM {edge_table} LIMIT 0)
-				{distribution}
+				{local_distribution}
 				""".format(**locals()))
 		plpy.execute(
 			""" CREATE TEMP TABLE {newupdate} AS ( SELECT
 					{src} AS id, {weight},
 					{src} AS parent {comma_grp} FROM {edge_table} LIMIT 0)
-				{distribution}
+				{local_distribution}
 				""".format(**locals()))
 
 		# Since HAWQ does not allow us to update, we create a new table and
