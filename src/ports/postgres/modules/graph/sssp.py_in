@@ -599,8 +599,8 @@ def validate_sssp(vertex_table, vertex_id, edge_table, edge_params,
 
 	if src_exists.nrows() == 0:
 		plpy.error(
-			"""Graph SSSP: Source vertex {source_vertex} is not present in """
-			+ """the vertex table {vertex_table}.""".format(**locals()))
+			"""Graph SSSP: Source vertex {source_vertex} is not present in the vertex table {vertex_table}.""".
+			format(**locals()))
 
 	vt_error = plpy.execute(
 		""" SELECT {vertex_id}
@@ -611,16 +611,16 @@ def validate_sssp(vertex_table, vertex_id, edge_table, edge_params,
 
 	if vt_error.nrows() != 0:
 		plpy.error(
-			"""Graph SSSP: Source vertex table {vertex_table} """
-			+ """contains duplicate vertex id's.""".format(**locals()))
+			"""Graph SSSP: Source vertex table {vertex_table} contains duplicate vertex id's.""".
+			format(**locals()))
 
 	_assert(not table_exists(out_table+"_summary"),
 		"Graph SSSP: Output summary table already exists!".format(**locals()))
 
 	if glist is not None:
 		_assert(columns_exist_in_table(edge_table, glist),
-			"""Graph SSSP: Not all columns from {glist} are """
-			+ """present in edge table ({edge_table}).""".format(**locals()))
+			"""Graph SSSP: Not all columns from {glist} are present in edge table ({edge_table}).""".
+			format(**locals()))
 
 	return None
 
