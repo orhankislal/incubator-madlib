@@ -134,8 +134,6 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY ({0})".format(vertex_id)!>)
-		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
-			<!"DISTRIBUTED BY (id)"!>)
 
 		is_hawq = m4_ifdef(<!__HAWQ__!>, <!True!>, <!False!>)
 		validate_sssp(vertex_table, vertex_id, edge_table,
@@ -180,7 +178,7 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			""" CREATE TABLE {out_table} AS ( SELECT
 					{grp_comma} {src} AS {vertex_id}, {weight},
 					{src} AS parent FROM {edge_table} LIMIT 0)
-				{local_distribution} """.format(**locals()))
+				{distribution} """.format(**locals()))
 
 		# We keep a summary table to keep track of the parameters used for this
 		# SSSP run. This table is used in the path finding function to eliminate
@@ -206,13 +204,13 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			""" CREATE TEMP TABLE {oldupdate} AS ( SELECT
 					{src} AS id, {weight},
 					{src} AS parent {comma_grp} FROM {edge_table} LIMIT 0)
-				{local_distribution}
+				{distribution}
 				""".format(**locals()))
 		plpy.execute(
 			""" CREATE TEMP TABLE {newupdate} AS ( SELECT
 					{src} AS id, {weight},
 					{src} AS parent {comma_grp} FROM {edge_table} LIMIT 0)
-				{local_distribution}
+				{distribution}
 				""".format(**locals()))
 
 		# Since HAWQ does not allow us to update, we create a new table and
