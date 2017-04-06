@@ -587,7 +587,6 @@ def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table,
 def validate_sssp(vertex_table, vertex_id, edge_table, edge_params,
 	source_vertex, out_table, glist, **kwargs):
 
-	plpy.info("here")
 	validate_graph_coding(vertex_table, vertex_id, edge_table, edge_params,
 		out_table,'SSSP')
 
@@ -598,32 +597,31 @@ def validate_sssp(vertex_table, vertex_id, edge_table, edge_params,
 		SELECT * FROM {vertex_table} WHERE {vertex_id}={source_vertex}
 		""".format(**locals()))
 
-	plpy.info("here")
 	if src_exists.nrows() == 0:
 		plpy.error(
 			"""Graph SSSP: Source vertex {source_vertex} is not present in """
 			+ """the vertex table {vertex_table}.""".format(**locals()))
-	plpy.info("here")
+
 	vt_error = plpy.execute(
 		""" SELECT {vertex_id}
 			FROM {vertex_table}
 			WHERE {vertex_id} IS NOT NULL
 			GROUP BY {vertex_id}
 			HAVING count(*) > 1 """.format(**locals()))
-	plpy.info("here")
+
 	if vt_error.nrows() != 0:
 		plpy.error(
 			"""Graph SSSP: Source vertex table {vertex_table} """
 			+ """contains duplicate vertex id's.""".format(**locals()))
-	plpy.info("here")
+
 	_assert(not table_exists(out_table+"_summary"),
 		"Graph SSSP: Output summary table already exists!".format(**locals()))
-	plpy.info("here")
+
 	if glist is not None:
 		_assert(columns_exist_in_table(edge_table, glist),
 			"""Graph SSSP: Not all columns from {glist} are """
 			+ """present in edge table ({edge_table}).""".format(**locals()))
-	plpy.info("here")
+
 	return None
 
 def validate_get_path(sssp_table, dest_vertex, **kwargs):
@@ -747,9 +745,9 @@ SELECT madlib.graph_sssp(
 	'id',                                -- Vertix id column
 	'edge',                              -- Edge table
 	'src=src, dest=dest, weight=weight', -- Comma delimted string of edge arguments
-	 0                                   -- The source vertex
-	'out')                               -- Output table of SSSP
-
+	 0,                                  -- The source vertex
+	'out'                                -- Output table of SSSP
+);
 -- View the SSSP costs for every vertex:
 SELECT * FROM out ORDER BY id;
 

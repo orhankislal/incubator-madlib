@@ -94,8 +94,9 @@ It will contain a row for every vertex from 'vertex_table' and have
 the following columns:
   - vertex_id : The id for the destination. Will use the input parameter 'vertex_id' for column naming.
   - weight : The total weight of the shortest path from the source vertex to this particular vertex.
-  Will use the input parameter (weight) for column naming.
+  Will use the input parameter 'weight' for column naming.
   - parent : The parent of this vertex in the shortest path from source. Will use 'parent' for column naming.
+
 A summary table named <out_table>_summary is created together with the output table. It keeps a record of the input parameters to be used by the path function.
 </dd>
 
@@ -124,7 +125,11 @@ graph_sssp( sssp_table,
 <dd>INTEGER. The vertex that will be the destination of the desired path.</dd>
 
 <dt>path_table</dt>
-<dd>TEXT. Name of the table that contains the path.</dd>
+<dd>TEXT. Name of the table that contains the path.
+It will contain a row for every group and have the following columns:
+  - grouping_cols : The grouping columns given in the creation of the SSSP table. If there were no grouping columns, these columns will not exist and the table will have a single row.
+  - path (TEXT) : The shortest path from the source vertex (as specified in the SSSP execution) to the destination vertex. The vertex ids will be collected into a string, seperated by commas.
+</dd>
 
 </dl>
 
