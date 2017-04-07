@@ -340,8 +340,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 					SELECT * FROM {out_table} LIMIT 0)
 					{distribution};"""
 				plpy.execute(sql.format(**locals()))
-				ret = plpy.execute("SELECT 1 AS one FROM {0} LIMIT 1".
-					format(out_table))
+				ret = plpy.execute("SELECT id FROM {0} LIMIT 1".
+					format(oldupdate))
 			else:
 				sql = """
 				UPDATE {out_table} SET
@@ -436,30 +436,30 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 					""".format(**locals()))[0]['grp']
 
 				# Delete the groups with negative cycles from the output table
-				sql_del = m4_ifdef(<!__HAWQ__!>,
-				<!"""
-				TRUNCATE TABLE {temp_table};
-				INSERT INTO {temp_table}
-					SELECT *
-					FROM {out_table}
-					WHERE NOT EXISTS(
-						SELECT 1
-						FROM {oldupdate} as oldupdate
-						WHERE {checkg_oo_sub}
-						)
-				DROP TABLE {out_table};
-				ALTER TABLE {temp_table} RENAME TO {out_table};
-				"""!>,
-				<!"""
-				DELETE FROM {out_table} USING {oldupdate} AS oldupdate
-				WHERE {checkg_oo_sub}
-				"""!>)
+				sql_del = """ DELETE FROM {out_table}
+					USING {oldupdate} AS oldupdate
+					WHERE {checkg_oo_sub}"""
+				if is_hawq:
+					sql_del = """
+						TRUNCATE TABLE {temp_table};
+						INSERT INTO {temp_table}
+							SELECT *
+							FROM {out_table}
+							WHERE NOT EXISTS(
+								SELECT 1
+								FROM {oldupdate} as oldupdate
+								WHERE {checkg_oo_sub}
+								);
+						DROP TABLE {out_table};
+						ALTER TABLE {temp_table} RENAME TO {out_table};"""
+
 				plpy.execute(sql_del.format(**locals()))
 
 				# If every group has a negative cycle,
 				# drop the output table as well
 				if table_is_empty(out_table):
-					plpy.execute("DROP TABLE IF EXISTS {0}".format(out_table))
+					plpy.execute("DROP TABLE IF EXISTS {0},{1}".
+						format(out_table,out_table+"_summary"))
 
 				plpy.warning(
 					"""Graph SSSP: Detected a negative cycle in the """ +
