@@ -54,10 +54,8 @@ def _check_groups(tbl1, tbl2, grp_list):
 		@param grp_list   The list of grouping columns
 	"""
 
-	sql = []
-	for i in grp_list:
-		sql.append(" "+tbl1+"."+i+" = "+tbl2+"."+i+" ")
-	return " AND ".join(sql)
+	return ' AND '.join([" {tbl1}.{i} = {tbl2}.{i} ".format(**locals())
+		for i in grp_list])
 
 def _grp_from_table(tbl, grp_list):
 
@@ -67,11 +65,8 @@ def _grp_from_table(tbl, grp_list):
 		@param tbl        Name of the table
 		@param grp_list   The list of grouping columns
 	"""
-
-	sql = []
-	for i in grp_list:
-		sql.append(" "+tbl+"."+i+" ")
-	return " , ".join(sql)
+	return ' , '.join([" {tbl}.{i} ".format(**locals())
+		for i in grp_list])
 
 def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 		edge_args, source_vertex, out_table, grouping_cols, **kwargs):
@@ -80,14 +75,14 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
     Single source shortest path function for graphs using the Bellman-Ford
     algorhtm [1].
     Args:
-        @param vertex_table     Name of the table that contains the vertex data.
-        @param vertex_id        Name of the column containing the vertex ids.
-        @param edge_table       Name of the table that contains the edge data.
-        @param edge_args        A comma-delimited string containing multiple
-                                named arguments of the form "name=value".
-        @param source_vertex    The source vertex id for the algorithm to start.
-        @param out_table        Name of the table to store the result of SSSP.
-        @param grouping_cols    The list of grouping columns.
+        @param vertex_table    Name of the table that contains the vertex data.
+        @param vertex_id       Name of the column containing the vertex ids.
+        @param edge_table      Name of the table that contains the edge data.
+        @param edge_args       A comma-delimited string containing multiple
+                               named arguments of the form "name=value".
+        @param source_vertex   The source vertex id for the algorithm to start.
+        @param out_table       Name of the table to store the result of SSSP.
+        @param grouping_cols   The list of grouping columns.
 
     [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
     """
@@ -290,7 +285,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 				WHERE {vertex_id} IS NOT NULL
 				 """.format(**locals()))
 
-			# The source can be reached with 0 cost and it has itself as the parent.
+			# The source can be reached with 0 cost and it has itself as the
+			# parent.
 			plpy.execute(
 				""" INSERT INTO {oldupdate}
 					VALUES({source_vertex},0,{source_vertex})
@@ -358,8 +354,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 			# for comparison.
 
 			# Once we have a list of edges and values (stores as 'message'),
-			# we check if these values are lower than the existing shortest path
-			# values.
+			# we check if these values are lower than the existing shortest
+			# path values.
 
 			sql = (""" INSERT INTO {newupdate}
 				SELECT DISTINCT ON (message.id {comma_grp})
@@ -455,42 +451,8 @@ def graph_sssp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 	return None
 
-def _path_helper(plan_name, dest_vertex, path_table, gset):
-	"""
-	Helper function for graph_sssp_get_path. Invoked once per group.
-	@param plan_name    Name of the plan that finds the parent of a given
-	                    vertex.
-    @param dest_vertex  The vertex that will be the destination of the
-                        desired path.
-    @param path_table   Name of the output table that will contain the path(s).
-    @param gset	        List of grouping columns values followed by a comma.
-                        Empty string if there are no grouping columns.
-	"""
-
-	ret = [str(dest_vertex)]
-	cur = dest_vertex
-	sql = "EXECUTE {plan_name} ({cur})"
-	parent = plpy.execute(sql.format(**locals()))
-	if parent.nrows() > 0:
-		while 1:
-			parent = parent[0]['parent']
-			if parent == cur:
-				ret.reverse()
-				ret = ",".join(ret)
-				plpy.execute(
-					""" INSERT INTO {path_table} VALUES ({gset} '{ret}')
-					""".format(**locals()))
-				return True
-			else:
-				ret.append(str(parent))
-				cur = parent
-
-			parent = plpy.execute(sql.format(**locals()))
-
-	return False
-
-def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table, **kwargs):
-
+def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table,
+	**kwargs):
 	"""
     Helper function that can be used to get the shortest path for a vertex
     Args:
@@ -538,7 +500,8 @@ def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table, **kw
 			check_grps_pt2 = " WHERE " + _check_groups(
 				path_table,temp2_name,glist)
 
-			checkg_po = _check_groups( path_table,"oldupdate",glist)
+			checkg_po = " WHERE " + _check_groups(
+				path_table,"oldupdate",glist)
 			grp_comma = grouping_cols + " , "
 
 		plpy.execute( "DROP TABLE IF EXISTS {0},{1}".
@@ -561,9 +524,17 @@ def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table, **kw
 				SELECT * FROM {temp1_name} LIMIT 0
 			""".format(**locals()))
 
+		# Greenplum does not allow updates on the distribution columns.
+		# If there are no grouping columns, path is the only remaining column
+		# to distribute on.
+		# Instead we use random distribution since there is a single record.
+		distribution = m4_ifdef(<!__GREENPLUM__!>,
+			<!"DISTRIBUTED RANDOMLY"!>, <!''!>)
+		distribution = distribution if grouping_cols is None else ''
+
 		plpy.execute("""
 			CREATE TABLE {path_table} AS SELECT {grp_comma} path
-			FROM {temp1_name}
+			FROM {temp1_name} {distribution}
 			""".format(**locals()))
 
 		# Since HAWQ does not allow us to update, we create a new table and
@@ -588,7 +559,7 @@ def graph_sssp_get_path(schema_madlib, sssp_table, dest_vertex, path_table, **kw
 						WHERE NOT EXISTS (
 							SELECT 1
 							FROM {temp1_name} as oldupdate
-							WHERE {checkg_po})
+							 {checkg_po})
 						UNION
 						SELECT {grp_comma} path FROM {temp1_name};
 					DROP TABLE {path_table};
