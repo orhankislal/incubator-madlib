@@ -13,9 +13,7 @@ new module:
     pagerank:
 # Changes in the types (UDT) including removal and modification
 udt:
-    # ----------------- Changes from 1.10.0 to 1.11 ----------
-    _tree_result_type:
-    _prune_result_type:
+
 
 # List of the UDF changes that affect the user externally. This includes change
 # in function name, return type, argument order or types, or removal of
