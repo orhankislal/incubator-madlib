@@ -37,8 +37,6 @@ new module:
 # Changes in the types (UDT) including removal and modification
 udt:
     # ----------------- Changes from 1.9.1 to 1.10.0 ----------
-    _tree_result_type:
-    _prune_result_type:
     kmeans_result:
     kmeans_state:
 
@@ -49,13 +47,7 @@ udt:
 # are user views dependent on this function, since the original function will
 # not be present in the upgraded version.
 udf:
-    # ----------------- Changes from 1.9.1 to 1.11 ----------
-    - _dt_apply:
-        rettype: schema_madlib._tree_result_type
-        argument: schema_madlib.bytea8, schema_madlib.bytea8, schema_madlib.bytea8, smallint, smallint, smallint, boolean, integer
-    - _prune_and_cplist:
-        rettype: schema_madlib._prune_result_type
-        argument: schema_madlib.bytea8, double precision, boolean
+    # ----------------- Changes from 1.9.1 to 1.10 ----------
     - kmeans:
         rettype: schema_madlib.kmeans_result
         argument: character varying, character varying, double precision[], character varying, character varying, integer, double precision

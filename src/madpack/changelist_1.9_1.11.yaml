@@ -39,8 +39,6 @@ udt:
     # ----------------- Changes from 1.9 to 1.9.1 ----------
     profile_result:
     # ----------------- Changes from 1.9.1 to 1.10.0 ----------
-    _tree_result_type:
-    _prune_result_type:
     kmeans_result:
     kmeans_state:
 
@@ -77,12 +75,6 @@ udf:
         rettype: double precision
         argument: text, text, double precision
     # ----------------- Changes from 1.9.1 to 1.10.0 ----------
-    - _dt_apply:
-        rettype: schema_madlib._tree_result_type
-        argument: schema_madlib.bytea8, schema_madlib.bytea8, schema_madlib.bytea8, smallint, smallint, smallint, boolean, integer
-    - _prune_and_cplist:
-        rettype: schema_madlib._prune_result_type
-        argument: schema_madlib.bytea8, double precision, boolean
     - kmeans:
         rettype: schema_madlib.kmeans_result
         argument: character varying, character varying, double precision[], character varying, character varying, integer, double precision
