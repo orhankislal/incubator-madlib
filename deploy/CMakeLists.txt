@@ -26,7 +26,7 @@ endif(PACKAGE_SUFFIX)
 
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/description.txt")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "Open-Source Library for Scalable in-Database Analytics")
+    "Apache MADlib (incubating) is an Open-Source Library for Scalable in-Database Analytics")
 set(CPACK_PACKAGE_FILE_NAME
     "madlib${_PACKAGE_SUFFIX}-${MADLIB_VERSION_STRING_NO_HYPHEN}-${CMAKE_SYSTEM_NAME}")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "madlib")
