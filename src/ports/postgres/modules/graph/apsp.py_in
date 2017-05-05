@@ -124,8 +124,8 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
     [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
     """
 
-	graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table, edge_args, out_table)
-	return
+	# graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table, edge_args, out_table)
+	# return
 
 	with MinWarning("warning"):
 		params_types = {'src': str, 'dest': str, 'weight': str}
