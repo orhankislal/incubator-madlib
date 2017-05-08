@@ -29,6 +29,7 @@
 
 
 import plpy
+from graph_utils import *
 from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import extract_keyvalue_params
@@ -40,73 +41,6 @@ from utilities.validate_args import columns_exist_in_table
 from utilities.validate_args import table_is_empty
 
 m4_changequote(`<!', `!>')
-
-def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
-		edge_args, out_table, **kwargs):
-
-	with MinWarning("warning"):
-		params_types = {'src': str, 'dest': str, 'weight': str}
-		default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
-		edge_params = extract_keyvalue_params(edge_args,
-                                            params_types,
-                                            default_args)
-		if vertex_id is None:
-			vertex_id = 'id'
-
-		src = edge_params["src"]
-		dest = edge_params["dest"]
-		weight = edge_params["weight"]
-
-
-		# distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
-		# 	<!"DISTRIBUTED BY ({0})".format(src)!>)
-		# local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
-		# 	<!"DISTRIBUTED BY (id)"!>)
-
-		# validate_graph_coding(vertex_table, vertex_id, edge_table,
-		# 	edge_params, source_vertex, out_table)
-
-		# plpy.execute(
-		# 	""" CREATE TABLE {out_table} ({src} integer, {dest} integer, {weight} DOUBLE PRECISION) """.format(**locals()))
-
-		vres = plpy.execute("SELECT {vertex_id} FROM {vertex_table}".format(**locals()))
-		vset = [item[vertex_id] for item in vres]
-
-		eres = plpy.execute("SELECT {src}, {dest}, {weight} FROM {edge_table}".
-			format(**locals()))
-		#plpy.info(eres)
-
-		v_cnt = vres.nrows()
-		# FIXME this assumes the vertices go 0, 1, 2 ...
-		out = [[99999999 if x!=y else 0 for x in range(v_cnt)] for y in range(v_cnt)]
-
-		for item in eres:
-			# plpy.info(item)
-			out[item[src]][item[dest]] = item[weight]
-
-		# plpy.info(out)
-
-		for k in vset:
-			for i in vset:
-				for j in vset:
-					if out[i][j] > out[i][k] + out[k][j]:
-						out[i][j] = out[i][k] + out[k][j]
-
-		sql_ins = """ CREATE TABLE {out_table} ({src} integer, {dest} integer, {weight} DOUBLE PRECISION);
-		INSERT INTO {out_table} ({src},{dest},{weight}) VALUES """.format(**locals())
-
-		for i in vset:
-			for j in vset:
-				sql_ins += "({0},{1},{2}),".format(i,j,out[i][j])
-
-		sql_ins = sql_ins[:-1] + ";"
-
-		# plpy.info(sql_ins)
-		plpy.execute(sql_ins)
-
-
-		# plpy.info(out)
-	return
 
 def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		edge_args, out_table, **kwargs):
@@ -124,10 +58,12 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
     [1] https://en.wikipedia.org/wiki/Bellman-Ford_algorithm
     """
 
-	# graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table, edge_args, out_table)
-	# return
-
 	with MinWarning("warning"):
+
+		INT_MAX = 2147483647
+		INFINITY = "'Infinity'"
+		EPSILON = 0.000001
+
 		params_types = {'src': str, 'dest': str, 'weight': str}
 		default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
 		edge_params = extract_keyvalue_params(edge_args,
@@ -140,19 +76,24 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		dest = edge_params["dest"]
 		weight = edge_params["weight"]
 
+		is_hawq = m4_ifdef(<!__HAWQ__!>, <!True!>, <!False!>)
+		is_hawq = True
+		out_table_1 = unique_string(desp='out_table_1')
+		out_table_2 = unique_string(desp='out_table_2')
+		tmp_view = unique_string(desp='tmp_view')
 		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY ({0})".format(src)!>)
 		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY (id)"!>)
 
-		# validate_graph_coding(vertex_table, vertex_id, edge_table,
-		# 	edge_params, source_vertex, out_table)
+		validate_graph_coding(vertex_table, vertex_id, edge_table,
+			edge_params, out_table, "APSP")
 
 		plpy.execute(
 			""" CREATE TABLE {out_table} AS
 				SELECT v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
 					CAST('Infinity' AS DOUBLE PRECISION) AS {weight},
-					NULL::INT AS next
+					NULL::INT AS parent
 				FROM {vertex_table} v1, {vertex_table} v2
 				WHERE v1.{vertex_id} IS NOT NULL AND v2.{vertex_id} IS NOT NULL
 				{distribution} """.format(**locals()))
@@ -167,7 +108,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		# The source can be reached with 0 cost and next is itself.
 		plpy.execute(
 			""" UPDATE {out_table} SET
-			{weight} = 0, next = {vertex_id}
+			{weight} = 0, parent = {vertex_id}
 			FROM {vertex_table}
 			WHERE {out_table}.{src} = {vertex_id}
 			AND {out_table}.{dest} = {vertex_id}
@@ -176,77 +117,95 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		# Distance = 1: every edge means there is a path from src to dest
 		plpy.execute(
 			""" UPDATE {out_table} SET
-			{weight} = edge.{weight}, next = edge.{dest}
+			{weight} = edge.{weight}, parent = edge.{dest}
 			FROM {edge_table} AS edge
 			WHERE {out_table}.{src} = edge.{src}
 			AND {out_table}.{dest} = edge.{dest}
 			AND {out_table}.{weight} > edge.{weight}
 			""".format(**locals()))
 
-		# v_cnt = plpy.execute(
-		# 	"""SELECT count(*) FROM {vertex_table}
-		# 	WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0]['count']
+		if is_hawq:
+			plpy.execute(""" ALTER TABLE {out_table} RENAME TO {out_table_1}
+				""".format(**locals()))
+			plpy.execute(""" CREATE TABLE {out_table_2} AS
+				SELECT * FROM {out_table_1} LIMIT 0""".format(**locals()))
 
-		# vids = plpy.execute(
-		#  	"""SELECT {vertex_id} FROM {vertex_table}
-		#  	WHERE {vertex_id} IS NOT NULL""".format(**locals()))[0][vertex_id]
+		ot_sql = """ SELECT * FROM {out_table}
+			WHERE {weight} != 'Infinity' AND {src} != {dest} """
 
-		# For each vertex v,
-		#	For each s,t
-		# 		check if there is a shorter path from s to t through v
+		if is_hawq:
 
-		# for i in vids:
-
-		# main_sql = """
-		# 	FOR i IN SELECT {vertex_id} FROM {vertex_table} LOOP
-		# 		UPDATE {out_table}
-		# 		SET {weight} = col.{weight} + row.{weight}, next = col.next
-		# 		FROM
-		# 			(SELECT * FROM {out_table} WHERE {src} = i
-		# 			AND {weight}!='Infinity') AS row,
-		# 			(SELECT * FROM {out_table} WHERE {dest} = i
-		# 			AND {weight}!='Infinity') AS col
-		# 		WHERE {out_table}.{src} = col.{src}
-		# 			AND {out_table}.{dest} = row.{dest}
-		# 			AND col.{weight} + row.{weight} < {out_table}.{weight};
-		# 	END LOOP;
-		# 	""".format(**locals())
-
-		# plpy.execute(main_sql)
-
-		# plpy.execute("""SELECT {schema_madlib}.__graph_apsp_loop('{vertex_table}','{vertex_id}','{out_table}','{src}','{dest}','{weight}')""".format(**locals()))
-		path = False
-		if path:
 			while 1:
-				updates = plpy.execute(
-					"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
-							SELECT out.{src}, edge.{dest},
-								min(out.{weight}+edge.{weight}) AS {weight}
-							FROM {out_table} AS out, {edge_table} AS edge
-							WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
-								AND out.{src}!=out.{dest}
-							GROUP BY out.{src},edge.{dest})x
-						WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
-							x.{weight} < out.{weight}
-					""".format(**locals()))
-				if updates.nrows() == 0:
+				ot_sql1 = ot_sql.format(out_table = out_table_1,
+					weight = weight, src = src, dest = dest)
+
+				update_sql = """ CREATE VIEW {tmp_view} AS
+					SELECT y.{src}, y.{dest}, y.{weight}, y.parent
+					FROM  {out_table_1} AS out INNER JOIN
+						(SELECT x.{src}, x.{dest}, x.{weight}, out.{dest} as parent
+						FROM ({ot_sql1}) AS out INNER JOIN {edge_table} AS edge
+							ON (out.{dest} = edge.{src})
+						INNER JOIN
+						(SELECT out.{src}, edge.{dest},
+							min(out.{weight}+edge.{weight}) AS {weight}
+						FROM ({ot_sql1}) AS out, {edge_table} AS edge
+						WHERE out.{dest} = edge.{src}
+						GROUP BY out.{src},edge.{dest}) x ON
+							(x.{src} = out.{src} AND x.{dest} = edge.{dest})
+						WHERE ABS(out.{weight}+edge.{weight} - x.{weight})
+							< {EPSILON}) y ON
+							(y.{src} = out.{src} AND y.{dest} = out.{dest})
+					WHERE y.{weight} < out.{weight}
+				""".format(**locals())
+
+				plpy.execute(update_sql)
+
+				if table_is_empty(tmp_view):
+					plpy.execute("DROP VIEW {0}".format(tmp_view))
+					plpy.execute("ALTER TABLE {0} RENAME TO {1}".format(
+						out_table_1,out_table))
 					break
+
+				fill_sql = """ INSERT INTO {out_table_2}
+					SELECT * FROM {out_table_1} AS out WHERE NOT EXISTS
+						(SELECT 1 FROM {tmp_view} AS t
+						WHERE t.{src} = out.{src} AND
+							t.{dest} = out.{dest})
+					UNION
+					SELECT * FROM {tmp_view}""".format(**locals())
+				plpy.execute(fill_sql)
+				plpy.execute("DROP VIEW {0}".format(tmp_view))
+				plpy.execute("TRUNCATE TABLE {0}".format(out_table_1))
+				tmpname = out_table_1
+				out_table_1 = out_table_2
+				out_table_2 = tmpname
+
 		else:
+			ot_sql = ot_sql.format(**locals())
 			while 1:
 				updates = plpy.execute(
-					"""	UPDATE  {out_table} SET {weight} = x.{weight} FROM (
-							SELECT out.{src}, edge.{dest},
+					"""	UPDATE {out_table}
+						SET {weight} = message.{weight},
+							parent = message.parent FROM
+						(	SELECT x.{src}, x.{dest}, x.{weight}, out.{dest} as parent
+							FROM ({ot_sql}) AS out INNER JOIN {edge_table} AS edge
+								ON (out.{dest} = edge.{src})
+							INNER JOIN
+							(SELECT out.{src}, edge.{dest},
 								min(out.{weight}+edge.{weight}) AS {weight}
-							FROM {out_table} AS out, {edge_table} AS edge
-							WHERE out.{dest} = edge.{src} AND out.{weight} != 'Infinity'
-								AND out.{src}!=out.{dest}
-							GROUP BY out.{src},edge.{dest})x
-						WHERE x.{src} = out.{src} AND x.{dest} = out.{dest} AND
-							x.{weight} < out.{weight}
+							FROM ({ot_sql}) AS out, {edge_table} AS edge
+							WHERE out.{dest} = edge.{src}
+							GROUP BY out.{src},edge.{dest}) x ON
+								(x.{src} = out.{src} AND x.{dest} = edge.{dest})
+							WHERE ABS(out.{weight}+edge.{weight} - x.{weight})
+								< {EPSILON}
+						) message
+						WHERE message.{src} = {out_table}.{src} AND
+							message.{dest} = {out_table}.{dest} AND
+							message.{weight} < {out_table}.{weight}
 					""".format(**locals()))
 				if updates.nrows() == 0:
 					break
-
 
 	return None
 
@@ -264,35 +223,36 @@ def graph_apsp_get_path(schema_madlib, apsp_table,
             					desired path.
 	"""
 
-	cur_src = source_vertex
+	cur_dest = dest_vertex
 
 	rows = get_cols(apsp_table)
 	src_row = rows[0]
 	dest_row = rows[1]
 
-	ret = [source_vertex]
+	ret = [dest_vertex]
+	if source_vertex == dest_vertex:
+		return ret
 	plan_name = unique_string(desp='plan')
 
-	plpy.execute(""" PREPARE {plan_name} (int) AS
-		SELECT next FROM {apsp_table} WHERE {src_row} = $1 AND {dest_row} = $2
+	plpy.execute(""" PREPARE {plan_name} (int,int) AS
+		SELECT parent FROM {apsp_table} WHERE {src_row} = $1 AND {dest_row} = $2
 		LIMIT 1 """.format(**locals()))
-	sql = "EXECUTE {plan_name} ({cur_src},{dest_vertex})"
-	next = plpy.execute(sql.format(**locals()))
+	sql = "EXECUTE {plan_name} ({source_vertex},{cur_dest})"
+	parent = plpy.execute(sql.format(**locals()))
 
-	if next.nrows() == 0:
+	if parent.nrows() == 0:
 		plpy.error("""Graph APSP: Vertex {source_vertex} or {dest_vertex} do not exist
 			in the APSP table {apsp_table}""".format(**locals()))
 
-	next = next[0]['next']
-	if next is None:
+	parent = parent[0]['parent']
+	if parent is None:
 		plpy.error("""Graph APSP: There isn't a path from vertex {source_vertex} to vertex {dest_vertex} """.format(**locals()))
 
-	while next != dest_vertex:
-		ret.append(next)
-		cur_src = next
-		next = plpy.execute(sql.format(**locals()))[0]['next']
+	while parent != cur_dest:
+		ret.append(parent)
+		cur_dest = parent
+		parent = plpy.execute(sql.format(**locals()))[0]['parent']
 
-	ret.append(dest_vertex)
+	ret.append(source_vertex)
+	ret = ret[::-1]
 	return ret
-
-
