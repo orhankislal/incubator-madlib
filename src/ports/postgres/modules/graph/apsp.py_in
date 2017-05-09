@@ -34,11 +34,12 @@ from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import extract_keyvalue_params
 from utilities.utilities import unique_string
+from utilities.utilities import split_quoted_delimited_str
 from utilities.validate_args import get_cols
-from utilities.validate_args import unquote_ident
 from utilities.validate_args import table_exists
 from utilities.validate_args import columns_exist_in_table
 from utilities.validate_args import table_is_empty
+from utilities.validate_args import get_expr_type
 
 m4_changequote(`<!', `!>')
 
@@ -77,11 +78,16 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		weight = edge_params["weight"]
 
 		is_hawq = m4_ifdef(<!__HAWQ__!>, <!True!>, <!False!>)
-		is_hawq = True
+
+		w_type = get_expr_type(weight,edge_table).lower()
+		init_w = INT_MAX
+		if w_type in ['double precision','float8']:
+			init_w = INFINITY
 
 		out_table_1 = unique_string(desp='out_table_1')
 		out_table_2 = unique_string(desp='out_table_2')
 		tmp_view = unique_string(desp='tmp_view')
+
 		distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
 			<!"DISTRIBUTED BY ({0})".format(src)!>)
 		local_distribution = m4_ifdef(<!__POSTGRESQL__!>, <!''!>,
@@ -90,84 +96,77 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 		validate_graph_coding(vertex_table, vertex_id, edge_table,
 			edge_params, out_table, "APSP")
 
-		plpy.execute(
-			""" CREATE TABLE {out_table} AS
-				SELECT v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
-					CAST('Infinity' AS DOUBLE PRECISION) AS {weight},
-					NULL::INT AS parent
-				FROM {vertex_table} v1, {vertex_table} v2
-				WHERE v1.{vertex_id} IS NOT NULL AND v2.{vertex_id} IS NOT NULL
-				{distribution} """.format(**locals()))
-
-		# GPDB and HAWQ have distributed by clauses to help them with indexing.
-		# For Postgres we add the indices manually.
-		sql_index = m4_ifdef(<!__POSTGRESQL__!>,
-			<!""" CREATE INDEX ON {out_table} ({src});
-			""".format(**locals())!>, <!''!>)
-		plpy.execute(sql_index)
-
-		# The source can be reached with 0 cost and next is itself.
-		plpy.execute(
-			""" UPDATE {out_table} SET
-			{weight} = 0, parent = {vertex_id}
-			FROM {vertex_table}
-			WHERE {out_table}.{src} = {vertex_id}
-			AND {out_table}.{dest} = {vertex_id}
-			""".format(**locals()))
-
-		# Distance = 1: every edge means there is a path from src to dest
-		plpy.execute(
-			""" UPDATE {out_table} SET
-			{weight} = edge.{weight}, parent = edge.{dest}
-			FROM {edge_table} AS edge
-			WHERE {out_table}.{src} = edge.{src}
-			AND {out_table}.{dest} = edge.{dest}
-			AND {out_table}.{weight} > edge.{weight}
-			""".format(**locals()))
-		plpy.info("here1")
-		if is_hawq:
-			plpy.execute(""" ALTER TABLE {out_table} RENAME TO {out_table_1}
-				""".format(**locals()))
-			plpy.execute(""" CREATE TABLE {out_table_2} AS
-				SELECT * FROM {out_table_1} LIMIT 0""".format(**locals()))
-			plpy.info("here2")
-
 		ot_sql = """ SELECT * FROM {out_table}
-			WHERE {weight} != 'Infinity' AND {src} != {dest} """
-		plpy.info("here3")
+			WHERE {weight} != {init_w} AND {src} != {dest} """
+
 		if is_hawq:
-			plpy.info("here4")
+
+			plpy.execute(""" CREATE TABLE {out_table_1} AS
+				SELECT {src},{dest},{weight}, NULL::INT AS parent
+				FROM {edge_table} LIMIT 0
+				""".format(**locals()))
+
+			# The source can be reached with 0 cost and next is itself.
+			plpy.execute(""" CREATE TABLE {out_table_2} AS
+				SELECT {vertex_id} AS {src}, {vertex_id} AS {dest},
+					0 AS {weight}, {vertex_id} AS parent
+				FROM {vertex_table} """.format(**locals()))
+
+			# Distance = 1: every edge means there is a path from src to dest
+			plpy.execute(""" INSERT INTO {out_table_2}
+				SELECT {src}, {dest}, {weight}, {dest} AS parent
+				FROM {edge_table} """.format(**locals()))
+
+			# Fill the rest of the values
+
+			fill_sql = """ INSERT INTO {out_table_1}
+				SELECT v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
+					{init_w} AS {weight}, NULL::INT AS parent
+				FROM {vertex_table} v1, {vertex_table} v2
+				WHERE v1.{vertex_id} IS NOT NULL AND
+					v2.{vertex_id} IS NOT NULL AND NOT EXISTS
+					(SELECT 1 FROM {out_table_2}
+						WHERE v1.{vertex_id} = {src} AND
+							v2.{vertex_id} = {dest})
+				UNION
+				SELECT * FROM {out_table_2}
+				""".format(**locals())
+			plpy.execute(fill_sql)
 			while 1:
-				ot_sql1 = ot_sql.format(out_table = out_table_1,
+				ot_sql1 = ot_sql.format(out_table = out_table_1, init_w = init_w,
 					weight = weight, src = src, dest = dest)
 
 				update_sql = """ CREATE VIEW {tmp_view} AS
 					SELECT y.{src}, y.{dest}, y.{weight}, y.parent
-					FROM  {out_table_1} AS out INNER JOIN
+					FROM  {out_table_1} AS out
+					INNER JOIN
 						(SELECT x.{src}, x.{dest}, x.{weight}, out.{dest} as parent
-						FROM ({ot_sql1}) AS out INNER JOIN {edge_table} AS edge
-							ON (out.{dest} = edge.{src})
+						FROM
+							({ot_sql1}) AS out
 						INNER JOIN
-						(SELECT out.{src}, edge.{dest},
-							min(out.{weight}+edge.{weight}) AS {weight}
-						FROM ({ot_sql1}) AS out, {edge_table} AS edge
-						WHERE out.{dest} = edge.{src}
-						GROUP BY out.{src},edge.{dest}) x ON
-							(x.{src} = out.{src} AND x.{dest} = edge.{dest})
+							{edge_table} AS edge
+						ON (out.{dest} = edge.{src})
+						INNER JOIN
+							(SELECT out.{src}, edge.{dest},
+								min(out.{weight}+edge.{weight}) AS {weight}
+							FROM ({ot_sql1}) AS out, {edge_table} AS edge
+							WHERE out.{dest} = edge.{src}
+							GROUP BY out.{src},edge.{dest}) x
+						ON (x.{src} = out.{src} AND x.{dest} = edge.{dest})
 						WHERE ABS(out.{weight}+edge.{weight} - x.{weight})
-							< {EPSILON}) y ON
-							(y.{src} = out.{src} AND y.{dest} = out.{dest})
+							< {EPSILON}) y
+					ON (y.{src} = out.{src} AND y.{dest} = out.{dest})
 					WHERE y.{weight} < out.{weight}
 				""".format(**locals())
 
 				plpy.execute(update_sql)
-				plpy.info("here5")
 				if table_is_empty(tmp_view):
 					plpy.execute("DROP VIEW {0}".format(tmp_view))
 					plpy.execute("ALTER TABLE {0} RENAME TO {1}".format(
 						out_table_1,out_table))
 					break
 
+				plpy.execute("TRUNCATE TABLE {0}".format(out_table_2))
 				fill_sql = """ INSERT INTO {out_table_2}
 					SELECT * FROM {out_table_1} AS out WHERE NOT EXISTS
 						(SELECT 1 FROM {tmp_view} AS t
@@ -176,15 +175,48 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 					UNION
 					SELECT * FROM {tmp_view}""".format(**locals())
 				plpy.execute(fill_sql)
-				plpy.info("here6")
 				plpy.execute("DROP VIEW {0}".format(tmp_view))
-				plpy.execute("TRUNCATE TABLE {0}".format(out_table_1))
 				tmpname = out_table_1
 				out_table_1 = out_table_2
 				out_table_2 = tmpname
 
 		else:
+			plpy.execute(
+				""" CREATE TABLE {out_table} AS
+					SELECT v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
+						{init_w} AS {weight}, NULL::INT AS parent
+					FROM {vertex_table} v1, {vertex_table} v2
+					WHERE v1.{vertex_id} IS NOT NULL AND v2.{vertex_id} IS NOT NULL
+					{distribution} """.format(**locals()))
+
+			# GPDB and HAWQ have distributed by clauses to help them with indexing.
+			# For Postgres we add the indices manually.
+			sql_index = m4_ifdef(<!__POSTGRESQL__!>,
+				<!""" CREATE INDEX ON {out_table} ({src});
+				""".format(**locals())!>, <!''!>)
+			plpy.execute(sql_index)
+
+			# The source can be reached with 0 cost and next is itself.
+			plpy.execute(
+				""" UPDATE {out_table} SET
+				{weight} = 0, parent = {vertex_id}
+				FROM {vertex_table}
+				WHERE {out_table}.{src} = {vertex_id}
+				AND {out_table}.{dest} = {vertex_id}
+				""".format(**locals()))
+
+			# Distance = 1: every edge means there is a path from src to dest
+			plpy.execute(
+				""" UPDATE {out_table} SET
+				{weight} = edge.{weight}, parent = edge.{dest}
+				FROM {edge_table} AS edge
+				WHERE {out_table}.{src} = edge.{src}
+				AND {out_table}.{dest} = edge.{dest}
+				AND {out_table}.{weight} > edge.{weight}
+				""".format(**locals()))
+
 			ot_sql = ot_sql.format(**locals())
+
 			while 1:
 				updates = plpy.execute(
 					"""	UPDATE {out_table}
@@ -209,7 +241,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 					""".format(**locals()))
 				if updates.nrows() == 0:
 					break
-	plpy.info("here7")
+
 	return None
 
 def graph_apsp_get_path(schema_madlib, apsp_table,
