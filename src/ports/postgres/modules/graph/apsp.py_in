@@ -78,6 +78,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 
 		is_hawq = m4_ifdef(<!__HAWQ__!>, <!True!>, <!False!>)
 		is_hawq = True
+
 		out_table_1 = unique_string(desp='out_table_1')
 		out_table_2 = unique_string(desp='out_table_2')
 		tmp_view = unique_string(desp='tmp_view')
@@ -123,18 +124,19 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 			AND {out_table}.{dest} = edge.{dest}
 			AND {out_table}.{weight} > edge.{weight}
 			""".format(**locals()))
-
+		plpy.info("here1")
 		if is_hawq:
 			plpy.execute(""" ALTER TABLE {out_table} RENAME TO {out_table_1}
 				""".format(**locals()))
 			plpy.execute(""" CREATE TABLE {out_table_2} AS
 				SELECT * FROM {out_table_1} LIMIT 0""".format(**locals()))
+			plpy.info("here2")
 
 		ot_sql = """ SELECT * FROM {out_table}
 			WHERE {weight} != 'Infinity' AND {src} != {dest} """
-
+		plpy.info("here3")
 		if is_hawq:
-
+			plpy.info("here4")
 			while 1:
 				ot_sql1 = ot_sql.format(out_table = out_table_1,
 					weight = weight, src = src, dest = dest)
@@ -159,7 +161,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 				""".format(**locals())
 
 				plpy.execute(update_sql)
-
+				plpy.info("here5")
 				if table_is_empty(tmp_view):
 					plpy.execute("DROP VIEW {0}".format(tmp_view))
 					plpy.execute("ALTER TABLE {0} RENAME TO {1}".format(
@@ -174,6 +176,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 					UNION
 					SELECT * FROM {tmp_view}""".format(**locals())
 				plpy.execute(fill_sql)
+				plpy.info("here6")
 				plpy.execute("DROP VIEW {0}".format(tmp_view))
 				plpy.execute("TRUNCATE TABLE {0}".format(out_table_1))
 				tmpname = out_table_1
@@ -206,7 +209,7 @@ def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
 					""".format(**locals()))
 				if updates.nrows() == 0:
 					break
-
+	plpy.info("here7")
 	return None
 
 def graph_apsp_get_path(schema_madlib, apsp_table,
