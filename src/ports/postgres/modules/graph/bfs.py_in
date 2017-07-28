@@ -34,7 +34,7 @@ from graph_utils import _grp_null_checks
 from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import extract_keyvalue_params
-from utilities.utilities import split_quoted_delimited_str
+from utilities.utilities import unique_string, split_quoted_delimited_str
 from utilities.validate_args import table_exists
 from utilities.validate_args import columns_exist_in_table
 
@@ -219,10 +219,20 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
         insert_qry_undirected_init = ""
         count_qry_undirected = ""
         insert_qry_undirected_loop = ""
+        directed_graph_condition = ''
+
+        subq = unique_string(desp='subq')
+        subq1 = unique_string(desp='subq1')
+        sube = unique_string(desp='edge')
+        sube1 = unique_string(desp='edge1')
+        subo = unique_string(desp='subo')
+        subq_grp_join = ''
+        subo_grp_join = ''
 
         if not directed:
             insert_qry_undirected_init = """ OR {dest} = {source_vertex}
                 """.format(**locals())
+            directed_graph_condition = " OR {subq}.{vertex_id}={sube}.{dest}".format(**locals())
 
             count_qry_undirected = """ OR (
                     ({grp_comma} {dest}) IN ( 
@@ -260,7 +270,7 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
         # are explicitly removed from analysis
         insert_qry_init = """
             INSERT INTO {out_table}
-            SELECT {grp_comma} 
+            SELECT {grp_comma}
                 {source_vertex} AS {vertex_id},
                 {curr_dist_val} AS {dist_col},
                 NULL AS {parent_col}
@@ -269,53 +279,100 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
                 {and_grp_null_checks}
             GROUP BY {grp_comma} {vertex_id}, {dist_col}
         """.format(**locals())
+        # with MinWarning("debug"):
+        #     plpy.debug(insert_qry_init)
         plpy.execute(insert_qry_init.format(**locals()))
+
+        message = unique_string(desp='message')
+        plpy.execute("""
+            CREATE TEMP TABLE {message} AS
+            SELECT {grp_comma} {vertex_id}, {parent_col}
+            FROM {out_table}
+        """.format(**locals()))
 
         # After initialization of the output table, number of nodes connected
         # by edges to the source vertex in each group is counted. This is also used 
         # below in the BFS iteration while-loop
+
+        if grouping_cols:
+            subq_grp_join = ' AND ' + get_grp_match_condition(subq, sube, glist)
+            subo_grp_join = ' AND ' + get_grp_match_condition(subo, sube, glist)
+        # qry = """
+        #     SELECT *
+        #     FROM {edge_table} AS {sube}
+        #     INNER JOIN {message} AS {subq}
+        #     ON {subq}.{vertex_id}={sube}.{src} {directed_graph_condition}
+        #         {subq_grp_join}
+        #     WHERE {sube}.{src}!={sube}.{dest}
+        # """.format(**locals())
         count_qry = """
-            SELECT COUNT(*) 
-            FROM {edge_table} 
-            WHERE (
-                ({grp_comma} {src}) IN ( 
-                    SELECT {grp_comma} {vertex_id} FROM {out_table} 
-                    WHERE {dist_col}={{curr_dist_val}}
-                ) 
-                AND 
-                ({grp_comma} {dest}) NOT IN (
-                    SELECT {grp_comma} {vertex_id} FROM {out_table}
-                )
-            ) {count_qry_undirected}
+            SELECT COUNT(*)
+            FROM {edge_table} AS {sube}
+            INNER JOIN {message} AS {subq}
+            ON {subq}.{vertex_id}={sube}.{src} {directed_graph_condition}
+                {subq_grp_join}
+            WHERE {sube}.{src}!={sube}.{dest}
         """.format(**locals())
+        # with MinWarning("debug"):
+        #     plpy.debug(count_qry)
 
         vct = plpy.execute(count_qry.format(**locals()))[0]['count']
+        # with MinWarning("debug"):
+        #     plpy.debug(plpy.execute(qry.format(**locals())))
 
         # This insert statement is executed within the BFS iteration while-loop 
         # below. It is used to discover and store all nodes (not already found) 
         # connected to those found in the immediate previous iteration.
+        toupdate = unique_string(desp='toupdate')
+        insert_toupdate_table = """
+            DROP TABLE IF EXISTS {toupdate};
+            CREATE TEMP TABLE {toupdate} AS
+            SELECT {grp_comma} q1.{dest} AS {vertex_id}, e1.{src} AS {parent_col}
+            FROM (
+                SELECT {grp_comma} {dest}
+                FROM {edge_table} AS {sube}
+                INNER JOIN {message} AS {subq}
+                ON {subq}.{vertex_id}={sube}.{src}
+                EXCEPT (
+                    SELECT {grp_comma} {vertex_id}
+                    FROM {out_table}
+                )
+            ) q1
+            INNER JOIN {edge_table} AS e1
+            ON q1.{dest}=e1.{dest} {grp_join_dest}
+
+            UNION ALL
+
+            SELECT {grp_comma} q2.{src} AS {vertex_id}, e2.{dest} AS {parent_col}
+            FROM (
+                SELECT {grp_comma} {src}
+                FROM {edge_table} AS {sube1}
+                INNER JOIN {message} AS {subq1}
+                ON {subq1}.{vertex_id}={sube1}.{dest}
+                EXCEPT (
+                    SELECT {grp_comma} {vertex_id}
+                    FROM {out_table}
+                )
+            ) q2
+            INNER JOIN {edge_table} AS e2
+            ON q2.{src}=e2.{src} {grp_join_src}
+        """.format(grp_join_dest='' if not grouping_cols else
+                    ' AND ' + get_grp_match_condition('q1', 'e1', glist),
+                    grp_join_src='' if not grouping_cols else
+                    ' AND ' + get_grp_match_condition('q2', 'e2', glist),
+                    **locals())
+
+        insert_message_loop = """
+            DROP TABLE IF EXISTS {message};
+            CREATE TEMP TABLE {message} AS
+            SELECT {grp_comma} {vertex_id}, {{curr_dist_val}}+1 AS {dist_col}, MIN({parent_col})
+            FROM {toupdate}
+            GROUP BY {grp_comma} {vertex_id}
+        """.format(**locals())
+
         insert_qry_loop = """
             INSERT INTO {out_table}
-            SELECT {grp_comma} {vertex_id}, {dist_col}, min({parent_col})
-            FROM (
-                SELECT {grp_comma} 
-                    {dest} AS {vertex_id}, 
-                    {{curr_dist_val}}+1 AS {dist_col}, 
-                    {src} AS {parent_col}
-                FROM {edge_table} 
-                WHERE (
-                    ({grp_comma} {src}) IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table} 
-                        WHERE {dist_col}={{curr_dist_val}}
-                    ) 
-                    AND 
-                    ({grp_comma} {dest}) NOT IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table}
-                    )
-                )
-                {insert_qry_undirected_loop}
-            ) t1
-            GROUP BY {grp_comma} {vertex_id}, {dist_col}
+            SELECT * FROM {message}
         """.format(**locals())
 
         # Main loop for traversing the graph
@@ -346,7 +403,12 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
 
             # Discover and store all nodes (not already found) connected to 
             # those found in the immediate previous iteration
+            # with MinWarning("debug"):
+            #     plpy.debug(insert_toupdate_table)
+            plpy.execute(insert_toupdate_table.format(**locals()))
+            plpy.execute(insert_message_loop.format(**locals()))
             plpy.execute(insert_qry_loop.format(**locals()))
+
 
             # Update distance value for next iteration
             curr_dist_val = curr_dist_val + 1
@@ -355,9 +417,14 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
             # stored in this iteration. This is used to check if the iterations
             # need to continue.
             vct = plpy.execute(count_qry.format(**locals()))[0]['count']
+            # with MinWarning("debug"):
+            #     plpy.debug(plpy.execute(qry.format(**locals())))
     
     return None
 
+def get_grp_match_condition(table1, table2, glist):
+    return ' AND '.join(['{0}.{2}={1}.{2}'.format(table1, table2, gcol)
+                        for gcol in glist])
 def graph_bfs_help(schema_madlib, message, **kwargs):
     """
     Help function for graph_bfs
