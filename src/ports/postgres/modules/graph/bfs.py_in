@@ -28,6 +28,7 @@
 """
 
 import plpy
+# from datetime import datetime
 from graph_utils import validate_graph_coding
 from graph_utils import get_graph_usage
 from graph_utils import _grp_from_table
@@ -239,36 +240,6 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
                 """.format(**locals())
             directed_graph_condition = " OR {subq}.{vertex_id}={sube}.{dest}".format(**locals())
 
-            count_qry_undirected = """ OR (
-                    ({grp_comma} {dest}) IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table}
-                        WHERE {dist_col}={{curr_dist_val}}
-                    )
-                    AND
-                    ({grp_comma} {src}) NOT IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table}
-                    )
-                )
-            """.format(**locals())
-
-            insert_qry_undirected_loop = """ UNION
-                SELECT {grp_comma}
-                    {src} AS {vertex_id},
-                    {{curr_dist_val}}+1 AS {dist_col},
-                    {dest} AS {parent_col}
-                FROM {edge_table}
-                WHERE (
-                    ({grp_comma} {dest}) IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table}
-                        WHERE {dist_col}={{curr_dist_val}}
-                    )
-                    AND
-                    ({grp_comma} {src}) NOT IN (
-                        SELECT {grp_comma} {vertex_id} FROM {out_table}
-                    )
-                )
-            """.format(**locals())
-
         # This step inserts into the output table the source vertex for each
         # group in which it is present. Grouping behavior is not predictable
         # when there are NULLs in any grouping column. Therefore those rows
@@ -313,12 +284,7 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
         #     WHERE {sube}.{src}!={sube}.{dest}
         # """.format(**locals())
         count_qry = """
-            SELECT COUNT(*)
-            FROM {edge_table} AS {sube}
-            INNER JOIN {message} AS {subq}
-            ON {subq}.{vertex_id}={sube}.{src} {directed_graph_condition}
-                {subq_grp_join}
-            WHERE {sube}.{src}!={sube}.{dest}
+            SELECT count(*) AS count FROM {message}
         """.format(**locals())
         # with MinWarning("debug"):
         #     plpy.debug(count_qry)
@@ -408,11 +374,17 @@ def graph_bfs(schema_madlib, vertex_table, vertex_id, edge_table,
             # those found in the immediate previous iteration
             # with MinWarning("debug"):
             #     plpy.debug(insert_toupdate_table)
-
+            # t1 = datetime.now()
             plpy.execute(insert_toupdate_table.format(**locals()))
+            # t2 = datetime.now()
             plpy.execute(insert_message_loop.format(**locals()))
+            # t3 = datetime.now()
             plpy.execute(insert_qry_loop.format(**locals()))
+            # t4 = datetime.now()
 
+            # plpy.info("insert_toupdate_table: {0}".format((t2-t1).total_seconds()))
+            # plpy.info("insert_message_loop: {0}".format((t3-t2).total_seconds()))
+            # plpy.info("insert_qry_loop: {0}".format((t4-t3).total_seconds()))
 
             # Update distance value for next iteration
             curr_dist_val = curr_dist_val + 1
