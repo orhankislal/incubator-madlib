@@ -48,11 +48,11 @@ weights of the path edges is minimized.
 
 @warning APSP is an expensive algorithm for run-time
 because it finds the shortest path between all nodes
-in the graph.  It is recommended that you start with a 
-small graph to get a sense of run-time for your use case, 
-then increase size carefully from there.  The worst case run-time 
-for this implementation is O(V^2 * E) where V is the 
-number of vertices and E is the number of edges.  In 
+in the graph.  It is recommended that you start with a
+small graph to get a sense of run-time for your use case,
+then increase size carefully from there.  The worst case run-time
+for this implementation is O(V^2 * E) where V is the
+number of vertices and E is the number of edges.  In
 practice, run-time will be generally be
 much less than this, but it depends on the graph.
 
@@ -436,3 +436,57 @@ RETURNS VARCHAR AS $$
 $$ LANGUAGE sql IMMUTABLE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
 --------------------------------------------------------------------------------
+
+
+
+DROP TYPE IF EXISTS MADLIB_SCHEMA.__graph_apsp_result CASCADE;
+CREATE TYPE MADLIB_SCHEMA.__graph_apsp_result AS (
+    output  DOUBLE PRECISION[][]
+);
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_step_transition(
+    DOUBLE PRECISION[][],
+    DOUBLE PRECISION[][],   /*+ src,dest,weight,parent */
+    DOUBLE PRECISION[][])   /*+ previous state */
+RETURNS DOUBLE PRECISION[][]
+AS 'MODULE_PATHNAME', 'graph_apsp_transition'
+LANGUAGE C IMMUTABLE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_step_merge_states(
+    state1 DOUBLE PRECISION[][],
+    state2 DOUBLE PRECISION[][])
+RETURNS DOUBLE PRECISION[]
+AS 'MODULE_PATHNAME', 'graph_apsp_merge_states'
+LANGUAGE C IMMUTABLE STRICT
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_step_final(
+    state DOUBLE PRECISION[])
+RETURNS DOUBLE PRECISION[]
+AS 'MODULE_PATHNAME', 'graph_apsp_final'
+LANGUAGE C IMMUTABLE STRICT
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+------------------------------------------------------------------------
+/**
+ * @internal
+ * @brief Perform one iteration of the conjugate-gradient method for computing
+ *        logistic regression
+ */
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.__graph_apsp_step(
+    DOUBLE PRECISION[][], DOUBLE PRECISION[][]);
+CREATE AGGREGATE MADLIB_SCHEMA.__graph_apsp_step(
+    DOUBLE PRECISION[][],   /*+ src,dest,weight,parent */
+    DOUBLE PRECISION[][])   /*+ previous_state */ (
+
+    STYPE=DOUBLE PRECISION[][],
+    SFUNC=MADLIB_SCHEMA.__graph_apsp_step_transition,
+    m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.__graph_apsp_step_merge_states,')
+    FINALFUNC=MADLIB_SCHEMA.__graph_apsp_step_final,
+    INITCOND='{{0,0,0,0},{0,1,0,0}'
+);
