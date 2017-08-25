@@ -1,0 +1,145 @@
+/* ----------------------------------------------------------------------- *//**
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ *
+ * @file graph.sql_in
+ *
+ * @brief SQL functions for graph analytics
+ * @date Nov 2016
+ *
+ * @sa Provides various graph algorithms.
+ *
+ *//* ----------------------------------------------------------------------- */
+/*m4_include(`SQLCommon.m4')*/
+/*
+hits( vertex_table,
+        vertex_id,
+        edge_table,
+        edge_args,
+        out_table,
+        max_iter,
+        threshold,
+        grouping_cols
+          )
+Arguments
+vertex_table
+TEXT. Name of the table containing the vertex data for the graph. Must contain the column specified in the 'vertex_id' parameter below.
+
+vertex_id
+TEXT, default = 'id'. Name of the column in 'vertex_table' containing vertex ids. The vertex ids are of type INTEGER with no duplicates. They do not need to be contiguous.
+
+edge_table
+TEXT. Name of the table containing the edge data. The edge table must contain columns for source vertex and destination vertex.
+
+edge_args
+TEXT. A comma-delimited string containing multiple named arguments of the form "name=value". The following parameters are supported for this string argument:
+
+src (INTEGER): Name of the column containing the source vertex ids in the edge table. Default column name is 'src'.
+dest (INTEGER): Name of the column containing the destination vertex ids in the edge table. Default column name is 'dest'.
+out_table
+TEXT. Name of the table to store the result of HITS. It will contain a row for every vertex from 'vertex_table' with the following columns:
+
+vertex_id : The id of a vertex. Will use the input parameter 'vertex_id' for column naming.
+authority : The vertex's Authority score.
+hub : The vertex's Hub score.
+grouping_cols : Grouping column (if any) values associated with the vertex_id.
+A summary table is also created that contains information regarding the number of iterations required for convergence. It is named by adding the suffix '_summary' to the 'out_table' parameter.
+
+max_iter
+INTEGER, default: 100. The maximum number of iterations allowed. An interation consists of both Authority and Hub phases.
+
+threshold
+FLOAT8, default: (1/number of vertices * 100). If the difference between the values of both scores (Authority and Hub) for every vertex of two consecutive iterations is smaller than 'threshold', or the iteration number is larger than 'max_iter', the computation stops. If you set the threshold to zero, then you will force the algorithm to run for the full number of iterations specified in 'max_iter'. It is advisable to set threshold to a value lower than 1 since both values (Authority and Hub) of nodes are initialized as 1. Note that both Authority and Hub value difference must be below threshold for the algorithm to stop.
+
+grouping_cols (optional)
+TEXT, default: NULL. A single column or a list of comma-separated columns that divides the input data into discrete groups, resulting in one distribution per group. When this value is NULL, no grouping is used and a single model is generated for all data.
+Note
+Expressions are not currently supported for 'grouping_cols'.
+The grouping support will be added later.
+
+*/
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+    vertex_table    TEXT,
+    vertex_id       TEXT,
+    edge_table      TEXT,
+    edge_args       TEXT,
+    out_table       TEXT,
+    max_iter        INTEGER,
+    threshold       FLOAT8,
+    grouping_cols   VARCHAR
+) RETURNS VOID AS $$
+    PythonFunction(graph, hits, hits)
+$$ LANGUAGE plpythonu VOLATILE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+-------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+    vertex_table    TEXT,
+    vertex_id       TEXT,
+    edge_table      TEXT,
+    edge_args       TEXT,
+    out_table       TEXT,
+    max_iter        INTEGER,
+    threshold       FLOAT8
+) RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.hits($1, $2, $3, $4, $5, $6, $7, NULL)
+$$ LANGUAGE SQL
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+-------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+    vertex_table    TEXT,
+    vertex_id       TEXT,
+    edge_table      TEXT,
+    edge_args       TEXT,
+    out_table       TEXT,
+    max_iter        INTEGER
+) RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.hits($1, $2, $3, $4, $5, $6,NULL, NULL)
+$$ LANGUAGE SQL
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+-------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+    vertex_table    TEXT,
+    vertex_id       TEXT,
+    edge_table      TEXT,
+    edge_args       TEXT,
+    out_table       TEXT,
+) RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.hits($1, $2, $3, $4, $5, 100, NULL, NULL)
+$$ LANGUAGE SQL
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+-------------------------------------------------------------------------
+/*
+-- Online help
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+    message VARCHAR
+) RETURNS VARCHAR AS $$
+    PythonFunction(graph, hits, hits_help)
+$$ LANGUAGE plpythonu IMMUTABLE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
+
+--------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits()
+RETURNS VARCHAR AS $$
+    SELECT MADLIB_SCHEMA.hits('');
+$$ LANGUAGE sql IMMUTABLE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
+--------------------------------------------------------------------------------
+*/

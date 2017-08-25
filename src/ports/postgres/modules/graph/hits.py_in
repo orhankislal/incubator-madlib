@@ -1,0 +1,292 @@
+# coding=utf-8
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# PageRank
+
+# Please refer to the pagerank.sql_in file for the documentation
+
+"""
+@file pagerank.py_in
+
+@namespace graph
+"""
+
+import plpy
+from utilities.control import MinWarning
+from utilities.utilities import _assert
+from utilities.utilities import add_postfix
+from utilities.utilities import extract_keyvalue_params
+from utilities.utilities import unique_string, split_quoted_delimited_str
+from utilities.utilities import is_platform_pg
+
+from utilities.validate_args import columns_exist_in_table, get_cols_and_types
+from graph_utils import *
+
+
+def validate_hits_args(schema_madlib, vertex_table, vertex_id, edge_table,
+                           edge_params, out_table, max_iter,threshold, 
+                           grouping_cols_list):
+    """
+    Function to validate input parameters for HITS
+    """
+    validate_graph_coding(vertex_table, vertex_id, edge_table, edge_params,
+                          out_table, 'HITS')
+    _assert(not threshold or (threshold >= 0.0 and threshold <= 1.0),
+            "HITS: Invalid threshold value ({0}), must be between 0 and 1.".
+            format(threshold))
+    _assert(max_iter > 0,
+            """HITS: Invalid max_iter value ({0}), must be a positive integer.""".
+            format(max_iter))
+
+def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
+             out_table, max_iter, threshold, grouping_cols, **kwargs):
+    """
+    Function that computes the PageRank
+
+    Args:
+        @param vertex_table
+        @param vertex_id
+        @param edge_table
+        @param source_vertex
+        @param dest_vertex
+        @param out_table
+        @param max_iter
+        @param threshold
+    """
+    with MinWarning('warning'):
+        params_types = {'src': str, 'dest': str}
+        default_args = {'src': 'src', 'dest': 'dest'}
+        edge_params = extract_keyvalue_params(edge_args, params_types, default_args)
+
+        # populate default values for optional params if null
+        if max_iter is None:
+            max_iter = 100
+        if not vertex_id:
+            vertex_id = "id"
+
+        validate_hits_args(schema_madlib, vertex_table, vertex_id, edge_table,
+                               edge_params, out_table,max_iter, threshold,
+                               grouping_cols_list)
+        src = edge_params["src"]
+        dest = edge_params["dest"]
+        n_vertices = plpy.execute("""
+                    SELECT COUNT({0}) AS cnt
+                    FROM {1}
+                """.format(vertex_id, vertex_table))[0]["cnt"]
+        # A fixed threshold value, of say 1e-5, might not work well when the
+        # number of vertices is a billion, since the initial pagerank value
+        # of all nodes would then be 1/1e-9. So, assign default threshold
+        # value based on number of nodes in the graph.
+        # NOTE: The heuristic below is not based on any scientific evidence.
+        if threshold is None:
+            threshold = 1.0 / (n_vertices * 1000)
+
+        edge_temp_table = unique_string(desp='temp_edge')
+        distribution = ('' if is_platform_pg() else
+                        "DISTRIBUTED BY ({0})".format(dest))
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(edge_temp_table))
+        plpy.execute("""
+            CREATE TEMP TABLE {edge_temp_table} AS
+                SELECT * FROM {edge_table}
+                {distribution}
+            """.format(**locals()))
+
+        # GPDB and HAWQ have distributed by clauses to help them with indexing.
+        # For Postgres we add the index explicitly.
+        if is_platform_pg():
+            plpy.execute("CREATE INDEX ON {0}({1})".format(edge_temp_table, dest))
+
+        # Intermediate tables required.
+        cur = unique_string(desp='cur')
+        message = unique_string(desp='message')
+        v1 = unique_string(desp='v1')
+
+        nodes_with_no_incoming_edges = unique_string(desp='no_incoming')
+
+        if is_platform_pg():
+            cur_distribution = cnts_distribution = ''
+        else:
+            cur_distribution = cnts_distribution = \
+                "DISTRIBUTED BY ({0})".format(vertex_id)
+        cur_join_clause = "{edge_temp_table}.{dest} = {cur}.{vertex_id}".format(**locals())
+        v1_join_clause = "{v1}.{vertex_id} = {edge_temp_table}.{src}".format(**locals())
+
+        # Queries when groups are involved need a lot more conditions in
+        # various clauses, so populating the required variables. Some intermediate
+        # tables are unnecessary when no grouping is involved, so create some
+        # tables and certain columns only during grouping.
+        if grouping_cols: pass
+        else:
+            # cur and out_cnts tables can be simpler when no grouping is involved.
+            auth_init_value = 1.0
+            hub_init_value = 1.0
+            plpy.execute("""
+                    CREATE TEMP TABLE {cur} AS
+                    SELECT {vertex_id}, {auth_init_value}::DOUBLE PRECISION AS auth,
+                    {hub_init_value}::DOUBLE PRECISION AS hub
+                    FROM {vertex_table}
+                    {cur_distribution}
+                """.format(**locals()))
+
+            # Find all nodes in the graph that don't have any incoming edges and
+            # assign random_prob as their pagerank values.
+            isolated_node_auth_value = 0.0
+            isolated_node_hub_value = 0.0
+            plpy.execute("""
+                    CREATE TABLE {nodes_with_no_incoming_edges} AS
+                    SELECT DISTINCT({src}), {isolated_node_auth_value}::DOUBLE PRECISION AS auth,
+                    {isolated_node_hub_value}::DOUBLE PRECISION AS hub
+                    FROM {edge_temp_table}
+                    EXCEPT
+                        (SELECT DISTINCT({dest}), {isolated_node_auth_value}::DOUBLE PRECISION AS auth,
+                        {isolated_node_hub_value}::DOUBLE PRECISION AS hub
+                        FROM {edge_temp_table})
+                """.format(**locals()))
+
+        unconverged_auth = 0
+        unconverged_hub = 0
+        iteration_num = 0
+        auth_norm = 0
+        hub_norm = 0
+        for iteration_num in range(max_iter):
+            #####################################################################
+            # calculate auth
+            #####################################################################
+            plpy.execute("""
+                    CREATE TABLE {message} AS
+                    SELECT {edge_temp_table}.{dest} AS {vertex_id},
+                            SUM({v1}.hub) AS auth,
+                            {cur}.hub AS hub
+                    FROM {edge_temp_table}
+                        INNER JOIN {cur} ON {cur_join_clause}
+                        INNER JOIN {cur} AS {v1} ON {v1_join_clause}
+                    GROUP BY {edge_temp_table}.{dest}, {cur}.hub
+                    {cur_distribution}
+                """.format(**locals()))
+            # If there are nodes that have no incoming edges, they are not
+            # captured in the message table. Insert entries for such nodes,
+            # with random_prob.
+            plpy.execute("""
+                    INSERT INTO {message}
+                    SELECT *
+                    FROM {nodes_with_no_incoming_edges}
+                """.format(**locals()))
+
+            auth_norm = math.sqrt(plpy.execute("""
+                SELECT SUM(temp.auth_square) AS sum_norm_square
+                FROM 
+                (SELECT POWER(auth, 2) AS auth_square
+                FROM {message}) AS temp
+                """.format(**locals))[0][sum_norm_square])
+            plpy.execute("""
+                UPDATE {message}
+                SET auth = auth/{auth_norm}
+                """.format(**locals))
+
+            #####################################################
+            #calculate and update hub
+            #####################################################
+            v2 = unique_string(desp='v2')
+            message_join_clause = "{edge_temp_table}.{dest} = {message}.{vertex_id}".format(**locals())
+            v2_join_clause = "{v2}.{vertex_id} = {edge_temp_table}.{src}".format(**locals())
+            plpy.execute("""
+                    UPDATE {message}
+                    SET hub = temp.hub
+                    FROM
+                    (SELECT {edge_temp_table}.{dest} AS {vertex_id},
+                            SUM({v2}.auth) AS hub, {message}.auth AS auth
+                    FROM {edge_temp_table}
+                        INNER JOIN {message} ON {message_join_clause}
+                        INNER JOIN {message} AS {v2} ON {v2_join_clause}
+                    GROUP BY {edge_temp_table}.{dest},{message}.{auth}
+                    {cur_distribution}) AS temp
+                    WHERE temp.{vertex_id} = {message}.{vertex_id}
+                """.format(**locals()))
+
+            hub_norm = math.sqrt(plpy.execute("""
+            SELECT SUM(temp.hub_square) AS sum_hub_square
+            FROM 
+            (SELECT POWER(hub, 2) AS hub_square
+            FROM {message}) AS temp
+            """.format(**locals))[0][sum_hub_square])
+
+            plpy.execute("""
+            UPDATE {message}
+            SET hub = hub/{hub_norm}
+            """.format(**locals))
+
+            # Check for convergence:
+            # Check for convergence only if threshold != 0.
+            if threshold != 0:
+                # message_unconv and cur_unconv will contain the unconverged groups
+                # after current # and previous iterations respectively. Groups that
+                # are missing in message_unconv but appear in cur_unconv are the
+                # groups that have converged after this iteration's computations.
+                # If no grouping columns are specified, then we check if there is
+                # at least one unconverged node (limit 1 is used in the query).
+                limit = ' LIMIT 1 '
+                plpy.execute("""
+                        CREATE TEMP TABLE {message_unconv_auth} AS
+                        SELECT {cur}.{vertex_id}
+                        FROM {message}
+                        INNER JOIN {cur}
+                        ON {cur}.{vertex_id}={message}.{vertex_id}
+                        WHERE ABS({cur}.auth-{message}.auth) > {threshold}
+                        {limit}
+                    """.format(**locals()))
+                unconverged_auth = plpy.execute("""SELECT COUNT(*) AS cnt FROM {0}
+                    """.format(message_unconv_auth))[0]["cnt"]
+
+                plpy.execute("""
+                        CREATE TEMP TABLE {message_unconv_hub} AS
+                        SELECT {cur}.{vertex_id}
+                        FROM {message}
+                        INNER JOIN {cur}
+                        ON {cur}.{vertex_id}={message}.{vertex_id}
+                        WHERE ABS({cur}.hub-{message}.hub) > {threshold}
+                        {limit}
+                    """.format(**locals()))
+                unconverged_hub = plpy.execute("""SELECT COUNT(*) AS cnt FROM {0}
+                    """.format(message_unconv_hub))[0]["cnt"]
+            else:
+                # Do not run convergence test if threshold=0, since that implies
+                # the user wants to run max_iter iterations.
+                unconverged_auth = 1
+                unconverged_hub = 1
+
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(cur))
+            plpy.execute("""ALTER TABLE {message} RENAME TO {cur}
+                    """.format(**locals()))
+            if unconverged_auth == 0 and unconverged_hub == 0:
+                break
+
+        # If there still are some unconverged groups/(entire table),
+        # update results.
+        if grouping_cols:pass
+        else:
+            plpy.execute("""
+                ALTER TABLE {table_name}
+                RENAME TO {out_table}
+                """.format(table_name=cur, **locals()))
+
+        # Step 4: Cleanup
+        plpy.execute("""DROP TABLE IF EXISTS {0},{1},{2},{3},{4},{5}
+            """.format(edge_temp_table, cur, message,
+                       message_unconv_auth, message_unconv_hub, nodes_with_no_incoming_edges))
+        if grouping_cols: pass
