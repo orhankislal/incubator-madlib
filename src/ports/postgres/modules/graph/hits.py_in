@@ -290,3 +290,7 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
             """.format(edge_temp_table, cur, message,
                        message_unconv_auth, message_unconv_hub, nodes_with_no_incoming_edges))
         if grouping_cols: pass
+
+
+def hits(schema_madlib, message, **kwargs):
+    pass

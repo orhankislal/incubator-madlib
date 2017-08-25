@@ -125,21 +125,21 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
 $$ LANGUAGE SQL
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 -------------------------------------------------------------------------
-/*
+
 -- Online help
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
-    message VARCHAR
-) RETURNS VARCHAR AS $$
-    PythonFunction(graph, hits, hits_help)
-$$ LANGUAGE plpythonu IMMUTABLE
-m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
+-- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
+--     message VARCHAR
+-- ) RETURNS VARCHAR AS $$
+--     PythonFunction(graph, hits, hits_help)
+-- $$ LANGUAGE plpythonu IMMUTABLE
+-- m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
 
 --------------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits()
 RETURNS VARCHAR AS $$
-    SELECT MADLIB_SCHEMA.hits('');
+    SELECT "aaa"
 $$ LANGUAGE sql IMMUTABLE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
 --------------------------------------------------------------------------------
-*/
+
