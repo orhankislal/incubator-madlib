@@ -87,7 +87,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
 ) RETURNS VOID AS $$
     PythonFunction(graph, hits, hits)
 $$ LANGUAGE plpythonu VOLATILE
-m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 -------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
     vertex_table    TEXT,
@@ -119,27 +119,10 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
     vertex_id       TEXT,
     edge_table      TEXT,
     edge_args       TEXT,
-    out_table       TEXT,
+    out_table       TEXT
 ) RETURNS VOID AS $$
     SELECT MADLIB_SCHEMA.hits($1, $2, $3, $4, $5, 100, NULL, NULL)
 $$ LANGUAGE SQL
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 -------------------------------------------------------------------------
-
--- Online help
--- CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits(
---     message VARCHAR
--- ) RETURNS VARCHAR AS $$
---     PythonFunction(graph, hits, hits_help)
--- $$ LANGUAGE plpythonu IMMUTABLE
--- m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
-
---------------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.hits()
-RETURNS VARCHAR AS $$
-    SELECT "aaa"
-$$ LANGUAGE sql IMMUTABLE
-m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
---------------------------------------------------------------------------------
 

@@ -28,6 +28,7 @@
 """
 
 import plpy
+import math
 from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import add_postfix
@@ -40,7 +41,7 @@ from graph_utils import *
 
 
 def validate_hits_args(schema_madlib, vertex_table, vertex_id, edge_table,
-                           edge_params, out_table, max_iter,threshold, 
+                           edge_params, out_table, max_iter,threshold,
                            grouping_cols_list):
     """
     Function to validate input parameters for HITS
@@ -80,6 +81,8 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
         if not vertex_id:
             vertex_id = "id"
 
+        # grouping_cols_list = split_quoted_delimited_str(grouping_cols)
+        grouping_cols_list = None
         validate_hits_args(schema_madlib, vertex_table, vertex_id, edge_table,
                                edge_params, out_table,max_iter, threshold,
                                grouping_cols_list)
@@ -116,6 +119,8 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
         cur = unique_string(desp='cur')
         message = unique_string(desp='message')
         v1 = unique_string(desp='v1')
+        message_unconv_auth = unique_string(desp='message_unconv_auth')
+        message_unconv_hub = unique_string(desp="message_unconv_hub")
 
         nodes_with_no_incoming_edges = unique_string(desp='no_incoming')
 
@@ -164,6 +169,20 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
         iteration_num = 0
         auth_norm = 0
         hub_norm = 0
+
+        plpy.execute("""
+                    CREATE TABLE {message_unconv_auth} AS
+                    SELECT {cur}.{vertex_id}
+                    FROM {cur}
+                    LIMIT 0
+                    """.format(**locals()))
+        plpy.execute("""
+                    CREATE TABLE {message_unconv_hub} AS
+                    SELECT {cur}.{vertex_id}
+                    FROM {cur}
+                    LIMIT 0
+                    """.format(**locals()))
+
         for iteration_num in range(max_iter):
             #####################################################################
             # calculate auth
@@ -190,14 +209,14 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
 
             auth_norm = math.sqrt(plpy.execute("""
                 SELECT SUM(temp.auth_square) AS sum_norm_square
-                FROM 
+                FROM
                 (SELECT POWER(auth, 2) AS auth_square
                 FROM {message}) AS temp
-                """.format(**locals))[0][sum_norm_square])
+                """.format(**locals()))[0]["sum_norm_square"])
             plpy.execute("""
                 UPDATE {message}
                 SET auth = auth/{auth_norm}
-                """.format(**locals))
+                """.format(**locals()))
 
             #####################################################
             #calculate and update hub
@@ -214,22 +233,22 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
                     FROM {edge_temp_table}
                         INNER JOIN {message} ON {message_join_clause}
                         INNER JOIN {message} AS {v2} ON {v2_join_clause}
-                    GROUP BY {edge_temp_table}.{dest},{message}.{auth}
+                    GROUP BY {edge_temp_table}.{dest},{message}.auth
                     {cur_distribution}) AS temp
                     WHERE temp.{vertex_id} = {message}.{vertex_id}
                 """.format(**locals()))
 
             hub_norm = math.sqrt(plpy.execute("""
             SELECT SUM(temp.hub_square) AS sum_hub_square
-            FROM 
+            FROM
             (SELECT POWER(hub, 2) AS hub_square
             FROM {message}) AS temp
-            """.format(**locals))[0][sum_hub_square])
+            """.format(**locals()))[0]["sum_hub_square"])
 
             plpy.execute("""
             UPDATE {message}
             SET hub = hub/{hub_norm}
-            """.format(**locals))
+            """.format(**locals()))
 
             # Check for convergence:
             # Check for convergence only if threshold != 0.
@@ -242,7 +261,8 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
                 # at least one unconverged node (limit 1 is used in the query).
                 limit = ' LIMIT 1 '
                 plpy.execute("""
-                        CREATE TEMP TABLE {message_unconv_auth} AS
+                        TRUNCATE TABLE {message_unconv_auth};
+                        INSERT INTO {message_unconv_auth}
                         SELECT {cur}.{vertex_id}
                         FROM {message}
                         INNER JOIN {cur}
@@ -254,7 +274,8 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
                     """.format(message_unconv_auth))[0]["cnt"]
 
                 plpy.execute("""
-                        CREATE TEMP TABLE {message_unconv_hub} AS
+                        TRUNCATE TABLE {message_unconv_hub};
+                        INSERT INTO {message_unconv_hub}
                         SELECT {cur}.{vertex_id}
                         FROM {message}
                         INNER JOIN {cur}
@@ -291,6 +312,3 @@ def hits(schema_madlib, vertex_table, vertex_id, edge_table, edge_args,
                        message_unconv_auth, message_unconv_hub, nodes_with_no_incoming_edges))
         if grouping_cols: pass
 
-
-def hits(schema_madlib, message, **kwargs):
-    pass
