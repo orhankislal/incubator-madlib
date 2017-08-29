@@ -20,9 +20,9 @@
  *//* ----------------------------------------------------------------------- */
 
 DROP TABLE IF EXISTS vertex,edge,out,out_summary,out_path,
-	vertex_alt,edge_alt,out_alt,out_alot_summary,
-	edge_gr,out_gr,out_gr_summary,out_gr_path,
-	edge_gr2, out_gr2, out_gr2_summary;
+    vertex_alt,edge_alt,out_alt,out_alot_summary,
+    edge_gr,out_gr,out_gr_summary,out_gr_path,
+    edge_gr2, out_gr2, out_gr2_summary;
 
 
 CREATE TABLE vertex(
