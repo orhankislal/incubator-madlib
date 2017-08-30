@@ -62,11 +62,18 @@ class APSPTransitionState {
             return mStorage;
         }
 
-        inline void initialize(const Allocator &inAllocator, uint16_t inWidthOfX) {
+        inline void initialize(const Allocator &inAllocator, uint16_t inVcnt) {
             mStorage = inAllocator.allocateArray<double, dbal::AggregateContext,
-                dbal::DoZero, dbal::ThrowBadAlloc>(arraySize(inWidthOfX));
-            rebind(inWidthOfX);
-            widthOfX = inWidthOfX;
+                dbal::DoZero, dbal::ThrowBadAlloc>(arraySize(inVcnt));
+            rebind(inVcnt);
+            vcnt = inVcnt;
+            weight.fill(9999999);
+            parent.fill(-1);
+            int i;
+            for (i = 0; i < vcnt; i ++){
+                weight[i*vcnt+i] = 0;
+                parent[i*vcnt+i] = i;
+            }
         }
 
         template <class OtherHandle>
@@ -83,13 +90,13 @@ class APSPTransitionState {
             const APSPTransitionState<OtherHandle> &inOtherState) {
 
             if (mStorage.size() != inOtherState.mStorage.size() ||
-                widthOfX != inOtherState.widthOfX)
+                vcnt != inOtherState.vcnt)
                 throw std::logic_error("Internal error: Incompatible transition "
                                        "states");
 
             numRows += inOtherState.numRows;
             int i;
-            for (i = 0 ; i < widthOfX*widthOfX ; i ++){
+            for (i = 0 ; i < vcnt*vcnt ; i ++){
                 if (weight[i] > inOtherState.weight[i]){
                     weight[i] = inOtherState.weight[i];
                     parent[i] = inOtherState.parent[i];
@@ -101,26 +108,25 @@ class APSPTransitionState {
         // FIXME
         inline void reset() {
             numRows = 0;
-            weight.fill(9999999);
         }
 
     private:
-        static inline size_t arraySize(const uint16_t inWidthOfX) {
-            return 3 + 2 * inWidthOfX * inWidthOfX;
+        static inline size_t arraySize(const uint16_t inVcnt) {
+            return 3 + 2 * inVcnt * inVcnt;
         }
-        void rebind(uint16_t inWidthOfX) {
+        void rebind(uint16_t inVcnt) {
             iteration.rebind(&mStorage[0]);
-            widthOfX.rebind(&mStorage[1]);
-            weight.rebind(&mStorage[2], inWidthOfX * inWidthOfX);
-            parent.rebind(&mStorage[2 + inWidthOfX * inWidthOfX],
-                inWidthOfX * inWidthOfX);
-            numRows.rebind(&mStorage[2 + 2 * inWidthOfX * inWidthOfX]);
+            vcnt.rebind(&mStorage[1]);
+            weight.rebind(&mStorage[2], inVcnt * inVcnt);
+            parent.rebind(&mStorage[2 + inVcnt * inVcnt],
+                inVcnt * inVcnt);
+            numRows.rebind(&mStorage[2 + 2 * inVcnt * inVcnt]);
         }
 
         Handle mStorage;
     public:
         typename HandleTraits<Handle>::ReferenceToUInt32 iteration;
-        typename HandleTraits<Handle>::ReferenceToUInt16 widthOfX;
+        typename HandleTraits<Handle>::ReferenceToUInt16 vcnt;
 
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap weight;
         typename HandleTraits<Handle>::ColumnVectorTransparentHandleMap parent;
@@ -132,48 +138,44 @@ graph_apsp_step_transition::run(AnyType &args) {
     APSPTransitionState<MutableArrayHandle<double> > state = args[0];
     if (args[1].isNull() || args[2].isNull()) { return args[0]; }
 
-    int src = args[1].getAs<int>();
-    int dest = args[2].getAs<int>();
-    int weight = args[3].getAs<double>();
+    int vcnt = args[1].getAs<int>();
+    int src = args[2].getAs<int>();
+    int dest = args[3].getAs<int>();
+    double weight = args[4].getAs<double>();
+    // elog(WARNING,"in %d %d %d %d", vcnt, src, dest, weight);
+    if (state.numRows == 0) {
+        //elog(WARNING,"here11");
 
-    int widthOfX = state.widthOfX;
-    elog(WARNING,"here1");
-    if (widthOfX == 0) {
-        elog(WARNING,"here11");
+        state.initialize(*this, static_cast<uint16_t>(vcnt));
+        if (!args[5].isNull()) {
+            //elog(WARNING,"here12");
+            APSPTransitionState<ArrayHandle<double> > previousState = args[5];
 
-        if (!args[4].isNull()) {
-            elog(WARNING,"here12");
-            APSPTransitionState<ArrayHandle<double> > previousState = args[4];
-
-            elog(WARNING,"here13");
+            //elog(WARNING,"here13");
             state = previousState;
 
-            elog(WARNING,"here14");
+            //elog(WARNING,"here14");
             state.reset();
         }
-        elog(WARNING,"here15");
+        //elog(WARNING,"here15");
     }
     // Now do the transition step
     state.numRows++;
-    elog(WARNING,"here2");
-    // int i = src*state.widthOfX + dest;
-    // if ( state.weight[i] > weight){
-    //     state.weight[i] = weight;
-    //     state.parent[i] = parent;
-    // }
 
     int i;
-    int start = src*widthOfX;
-    elog(WARNING,"here3");
-    for ( i = 0 ; i < widthOfX ; i ++ ){
+    int start = src*vcnt;
 
-        if (state.weight[start+i] > weight + state.weight[i*widthOfX+dest]){
-            elog(WARNING,"here4");
-            state.weight[start+i] = weight + state.weight[i*widthOfX+dest];
+    for ( i = 0 ; i < vcnt ; i ++ ){
+        elog(WARNING,"here4 i = %d, %d %d", i, src, dest);
+
+        if (state.weight[dest*vcnt+i] != 9999999 && state.weight[start+i] > weight + state.weight[dest*vcnt+i]){
+            elog(WARNING,"comp i = %d, %d %d, %f > %f + %f", i, src, dest,
+                state.weight[start+i], weight, state.weight[dest*vcnt+i]);
+            state.weight[start+i] = weight + state.weight[dest*vcnt+i];
             state.parent[start+i] = dest;
         }
     }
-    elog(WARNING,"here5");
+    //elog(WARNING,"here5");
     return state;
 }
 
@@ -203,17 +205,32 @@ graph_apsp_step_final::run(AnyType &args) {
 
 
 AnyType
-internal_graph_apsp_result::run(AnyType &args) {
+internal_graph_apsp_finalizer::run(AnyType &args) {
+
+    //elog(WARNING, "here1");
     APSPTransitionState<ArrayHandle<double> > state = args[0];
-    if (state.status == NULL_EMPTY)
+    if (state.numRows == 0)
         return Null();
 
-    SymmetricPositiveDefiniteEigenDecomposition<Matrix> decomposition(
-        state.X_transp_AX, EigenvaluesOnly, ComputePseudoInverse);
+    int vcnt = state.vcnt;
+    MutableNativeIntegerVector src(allocateArray<int>(vcnt*vcnt));
+    MutableNativeIntegerVector dest(allocateArray<int>(vcnt*vcnt));
+    MutableNativeColumnVector weight(allocateArray<double>(vcnt*vcnt));
+    MutableNativeIntegerVector parent(allocateArray<int>(vcnt*vcnt));
+    int i,j;
+    for (i = 0 ; i < vcnt ; i ++){
+        for (j = 0 ; j < vcnt ; j ++){
+            src[i*vcnt+j] = i;
+            dest[i*vcnt+j] = j;
+            weight[i*vcnt+j] = state.weight[i*vcnt+j];
+            parent[i*vcnt+j] = state.parent[i*vcnt+j];
+        }
+    }
 
-    return stateToResult(*this, state.coef,
-                         state.X_transp_AX, state.logLikelihood,
-                         state.status, state.numRows);
+    AnyType tuple;
+
+    tuple << src << dest << weight << parent;
+    return tuple;
 }
 
 

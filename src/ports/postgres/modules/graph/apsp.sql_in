@@ -411,8 +411,8 @@ m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.graph_apsp_get_path(
     apsp_table             TEXT,
     source_vertex          INT,
-  dest_vertex            INT,
-  path_table             TEXT
+    dest_vertex            INT,
+    path_table             TEXT
 
 ) RETURNS VOID AS $$
     PythonFunction(graph, apsp, graph_apsp_get_path)
@@ -437,9 +437,7 @@ $$ LANGUAGE sql IMMUTABLE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `CONTAINS SQL', `');
 --------------------------------------------------------------------------------
 
-
-
-DROP TYPE IF EXISTS MADLIB_SCHEMA.__graph_apsp_state CASCADE;
+DROP TYPE IF EXISTS MADLIB_SCHEMA.__graph_apsp_result CASCADE;
 CREATE TYPE MADLIB_SCHEMA.__graph_apsp_result AS (
     src  INTEGER[],
     dest INTEGER[],
@@ -449,6 +447,7 @@ CREATE TYPE MADLIB_SCHEMA.__graph_apsp_result AS (
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_step_transition(
     DOUBLE PRECISION[],
+    INTEGER,
     INTEGER,
     INTEGER,
     DOUBLE PRECISION,
@@ -486,9 +485,11 @@ m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.__graph_apsp_step(
     INTEGER,
     INTEGER,
+    INTEGER,
     DOUBLE PRECISION,
     DOUBLE PRECISION[]);
 CREATE AGGREGATE MADLIB_SCHEMA.__graph_apsp_step(
+    INTEGER,
     INTEGER,
     INTEGER,
     DOUBLE PRECISION,
@@ -506,8 +507,8 @@ CREATE AGGREGATE MADLIB_SCHEMA.__graph_apsp_step(
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.__graph_apsp_finalizer(
     /*+ state */ DOUBLE PRECISION[])
 RETURNS MADLIB_SCHEMA.__graph_apsp_result
-AS 'MODULE_PATHNAME', 'internal_graph_apsp_result'
-LANGUAGE c IMMUTABLE STRICT
+AS 'MODULE_PATHNAME', 'internal_graph_apsp_finalizer'
+LANGUAGE C IMMUTABLE STRICT
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 

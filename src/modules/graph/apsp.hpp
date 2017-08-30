@@ -36,3 +36,9 @@ DECLARE_UDF(graph, graph_apsp_step_merge_states)
  * @brief Logistic regression (conjugate-gradient step): Final function
  */
 DECLARE_UDF(graph, graph_apsp_step_final)
+
+/**
+ * @brief Logistic regression (conjugate-gradient): Convert transition state to
+ *     result tuple
+ */
+DECLARE_UDF(graph, internal_graph_apsp_finalizer)

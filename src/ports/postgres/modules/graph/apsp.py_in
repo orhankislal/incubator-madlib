@@ -99,36 +99,52 @@ def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
             FROM {edge_table} WHERE {dest} IS NOT NULL
             """.format(**locals()))
 
+        vcnt = 4;
         update_plan = plpy.prepare(
             """
             SELECT
                 {schema_madlib}.__graph_apsp_step(
+                    ({vcnt})::integer,
                     ({src})::integer,
                     ({dest})::integer,
                     ({weight})::double precision,
                     ($1))
             FROM {edge_table}
             """.format(**locals()), ["double precision[]"])
-        plpy.execute(""" CREATE TABLE {out_table} AS
-                (SELECT {src}, {dest}, {weight},
-                    {src} AS parent FROM {edge_table} LIMIT 0)
-                 """.format(**locals()))
 
-        plpy.execute(""" INSERT INTO {out_table}
-            SELECT
-                v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
-                {init_w} AS {weight}, NULL::INT AS parent
-            FROM
-                {tmp_view} AS v1 INNER JOIN
-                {tmp_view} AS v2 ON ({checkg_vv_sub})
-                """.format(**locals()))
-        plpy.execute("DROP VIEW IF EXISTS {0}".format(tmp_view))
+        # plpy.execute(""" CREATE TABLE {out_table} AS
+        #         (SELECT {src}, {dest}, {weight},
+        #             {src} AS parent FROM {edge_table} LIMIT 0)
+        #          """.format(**locals()))
+
+        # plpy.execute(""" INSERT INTO {out_table}
+        #     SELECT
+        #         v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
+        #         {init_w} AS {weight}, NULL::INT AS parent
+        #     FROM
+        #         {tmp_view} AS v1 INNER JOIN
+        #         {tmp_view} AS v2 ON ({checkg_vv_sub})
+        #         """.format(**locals()))
+        # plpy.execute("DROP VIEW IF EXISTS {0}".format(tmp_view))
         state = None
-        for it in range(0, 100):
+        for it in range(0, 10):
             res_tuple = plpy.execute(update_plan, [state])
             state = res_tuple[0].values()[0]
+            plpy.info(state)
         plpy.info("done  ")
         plpy.info(state)
+
+        output_table = plpy.prepare(
+                """
+                drop table if exists {out_table};
+                create table {out_table} as
+                    select * from
+                        {schema_madlib}.__graph_apsp_finalizer($1)
+                """.format(schema_madlib=schema_madlib,
+                           out_table=out_table), ["double precision[]"])
+
+        plpy.execute(output_table, [state])
+        return None
 
 def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
                edge_args, out_table, grouping_cols, **kwargs):
