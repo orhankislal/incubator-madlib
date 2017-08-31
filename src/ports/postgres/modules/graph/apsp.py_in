@@ -99,7 +99,7 @@ def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
             FROM {edge_table} WHERE {dest} IS NOT NULL
             """.format(**locals()))
 
-        vcnt = 4;
+        vcnt = 1000;
         update_plan = plpy.prepare(
             """
             SELECT
@@ -127,12 +127,12 @@ def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
         #         """.format(**locals()))
         # plpy.execute("DROP VIEW IF EXISTS {0}".format(tmp_view))
         state = None
-        for it in range(0, 10):
+        for it in range(0, 18):
             res_tuple = plpy.execute(update_plan, [state])
             state = res_tuple[0].values()[0]
-            plpy.info(state)
-        plpy.info("done  ")
-        plpy.info(state)
+        #     plpy.info(state)
+        # plpy.info("done  ")
+        # plpy.info(state)
 
         output_table = plpy.prepare(
                 """

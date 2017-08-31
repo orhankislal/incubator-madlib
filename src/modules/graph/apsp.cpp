@@ -166,10 +166,10 @@ graph_apsp_step_transition::run(AnyType &args) {
     int start = src*vcnt;
 
     for ( i = 0 ; i < vcnt ; i ++ ){
-        elog(WARNING,"here4 i = %d, %d %d", i, src, dest);
+        // elog(WARNING,"here4 i = %d, %d %d", i, src, dest);
 
         if (state.weight[dest*vcnt+i] != 9999999 && state.weight[start+i] > weight + state.weight[dest*vcnt+i]){
-            elog(WARNING,"comp i = %d, %d %d, %f > %f + %f", i, src, dest,
+            // elog(WARNING,"comp i = %d, %d %d, %f > %f + %f", i, src, dest,
                 state.weight[start+i], weight, state.weight[dest*vcnt+i]);
             state.weight[start+i] = weight + state.weight[dest*vcnt+i];
             state.parent[start+i] = dest;
