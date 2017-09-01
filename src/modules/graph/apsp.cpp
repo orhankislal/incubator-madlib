@@ -142,22 +142,14 @@ graph_apsp_step_transition::run(AnyType &args) {
     int src = args[2].getAs<int>();
     int dest = args[3].getAs<int>();
     double weight = args[4].getAs<double>();
-    // elog(WARNING,"in %d %d %d %d", vcnt, src, dest, weight);
     if (state.numRows == 0) {
-        //elog(WARNING,"here11");
 
         state.initialize(*this, static_cast<uint16_t>(vcnt));
         if (!args[5].isNull()) {
-            //elog(WARNING,"here12");
             APSPTransitionState<ArrayHandle<double> > previousState = args[5];
-
-            //elog(WARNING,"here13");
             state = previousState;
-
-            //elog(WARNING,"here14");
             state.reset();
         }
-        //elog(WARNING,"here15");
     }
     // Now do the transition step
     state.numRows++;
@@ -166,7 +158,6 @@ graph_apsp_step_transition::run(AnyType &args) {
     int start = src*vcnt;
 
     for ( i = 0 ; i < vcnt ; i ++ ){
-        // elog(WARNING,"here4 i = %d, %d %d", i, src, dest);
 
         if (state.weight[dest*vcnt+i] != 9999999 && state.weight[start+i] > weight + state.weight[dest*vcnt+i]){
             // elog(WARNING,"comp i = %d, %d %d, %f > %f + %f", i, src, dest,
