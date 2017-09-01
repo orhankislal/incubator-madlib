@@ -45,6 +45,105 @@ from utilities.validate_args import columns_exist_in_table
 from utilities.validate_args import table_is_empty
 from utilities.validate_args import get_expr_type
 
+def graph_apsp2(schema_madlib, vertex_table, vertex_id, edge_table,
+               edge_args, out_table, grouping_cols, **kwargs):
+
+    with MinWarning("warning"):
+
+        INT_MAX = 2147483647
+        INFINITY = "'Infinity'"
+        EPSILON = 0.000001
+
+        params_types = {'src': str, 'dest': str, 'weight': str}
+        default_args = {'src': 'src', 'dest': 'dest', 'weight': 'weight'}
+        edge_params = extract_keyvalue_params(edge_args, params_types, default_args)
+
+        src = edge_params["src"]
+        dest = edge_params["dest"]
+        weight = edge_params["weight"]
+        parent = "parent"
+
+        # Initialize grouping related variables
+        comma_grp = ""
+        comma_grp_e = ""
+        comma_grp_m = ""
+        grp_comma = ""
+        grp_v1_comma = ""
+        grp_o1_comma = ""
+        grp_o_comma = ""
+        checkg_eo = ""
+        checkg_eout = ""
+        checkg_ex = ""
+        checkg_om = ""
+        checkg_o1t_sub = ""
+        checkg_ot_sub = ""
+        checkg_ot = ""
+        checkg_o1t = ""
+        checkg_vv = ""
+        checkg_o2v = ""
+        checkg_oy = ""
+        checkg_vv_sub = "TRUE"
+        grp_by = ""
+
+        w_type = get_expr_type(weight, edge_table).lower()
+        init_w = INT_MAX
+        if w_type in ['real', 'double precision', 'float8']:
+            init_w = INFINITY
+
+        tmp_view = unique_string(desp='tmp_view')
+        plpy.execute(""" CREATE VIEW {tmp_view} AS
+            SELECT {src} AS {vertex_id} {comma_grp}
+            FROM {edge_table} WHERE {src} IS NOT NULL
+            UNION
+            SELECT {dest} AS {vertex_id} {comma_grp}
+            FROM {edge_table} WHERE {dest} IS NOT NULL
+            """.format(**locals()))
+
+        vcnt = 1000;
+        update_plan = plpy.prepare(
+            """
+            SELECT
+                {schema_madlib}.__graph_apsp_step(
+                    ({vcnt})::integer,
+                    ({src})::integer,
+                    ({dest})::integer,
+                    ({weight})::double precision,
+                    ($1))
+            FROM {edge_table}
+            """.format(**locals()), ["double precision[]"])
+
+        # plpy.execute(""" CREATE TABLE {out_table} AS
+        #         (SELECT {src}, {dest}, {weight},
+        #             {src} AS parent FROM {edge_table} LIMIT 0)
+        #          """.format(**locals()))
+
+        # plpy.execute(""" INSERT INTO {out_table}
+        #     SELECT
+        #         v1.{vertex_id} AS {src}, v2.{vertex_id} AS {dest},
+        #         {init_w} AS {weight}, NULL::INT AS parent
+        #     FROM
+        #         {tmp_view} AS v1 INNER JOIN
+        #         {tmp_view} AS v2 ON ({checkg_vv_sub})
+        #         """.format(**locals()))
+        # plpy.execute("DROP VIEW IF EXISTS {0}".format(tmp_view))
+        state = None
+
+        #range 8 for vcnt=100, 18 for 1000
+        for it in range(0, 18):
+            res_tuple = plpy.execute(update_plan, [state])
+            state = res_tuple[0].values()[0]
+
+        # output_table = plpy.prepare(
+        #         """
+        #         drop table if exists {out_table};
+        #         create table {out_table} as
+        #             select * from
+        #                 {schema_madlib}.__graph_apsp_finalizer($1)
+        #         """.format(schema_madlib=schema_madlib,
+        #                    out_table=out_table), ["double precision[]"])
+
+        # plpy.execute(output_table, [state])
+        return None
 
 def graph_apsp(schema_madlib, vertex_table, vertex_id, edge_table,
                edge_args, out_table, grouping_cols, **kwargs):
