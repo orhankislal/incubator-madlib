@@ -170,7 +170,7 @@ graph_apsp_step_transition::run(AnyType &args) {
 
         if (state.weight[dest*vcnt+i] != 9999999 && state.weight[start+i] > weight + state.weight[dest*vcnt+i]){
             // elog(WARNING,"comp i = %d, %d %d, %f > %f + %f", i, src, dest,
-                state.weight[start+i], weight, state.weight[dest*vcnt+i]);
+            //    state.weight[start+i], weight, state.weight[dest*vcnt+i]);
             state.weight[start+i] = weight + state.weight[dest*vcnt+i];
             state.parent[start+i] = dest;
         }
