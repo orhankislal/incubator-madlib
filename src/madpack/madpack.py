@@ -1190,7 +1190,7 @@ def main(argv):
                 if (_is_rev_gte(_get_rev_num(dbver), _get_rev_num('5.0')) and
                         not _is_rev_gte(_get_rev_num(dbver), _get_rev_num('6.0'))):
                     dbver = '5'
-                elseif (_is_rev_gte(_get_rev_num(dbver), _get_rev_num('6.0')) and
+                elif (_is_rev_gte(_get_rev_num(dbver), _get_rev_num('6.0')) and
                         not _is_rev_gte(_get_rev_num(dbver), _get_rev_num('7.0'))):
                     dbver = '6'
                 # Due to the ABI incompatibility between 4.3.4 and 4.3.5,
