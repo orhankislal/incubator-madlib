@@ -12,6 +12,7 @@
 import plpy
 from utilities.group_control import GroupIterationController
 from utilities.utilities import unique_string
+from utilities.validate_args import is_var_valid
 from utilities.validate_args import table_exists
 from utilities.validate_args import columns_exist_in_table
 from utilities.validate_args import table_is_empty
