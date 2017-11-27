@@ -180,8 +180,17 @@ def _populate_output_table(schema_madlib, source_table, output_table,
             function_name = "Correlation"
             agg_str = "{0}.correlation_agg(x, mean)".format(schema_madlib)
 
+        col_features_list = ["coalesce(" + col + ", 'nan'::double precision) AS " + col
+                                for col in col_names]
+        cols = ','.join(col_features_list)
+        sql0 = """drop table if exists t1;
+            CREATE TEMP TABLE t1 AS
+            SELECT {cols} FROM {source_table};""".format(**locals())
+        plpy.execute(sql0)
+        plpy.info("select * from t1")
+        source_table = "t1"
         # actual computation
-        plpy.execute("""
+        sql1 = """
             CREATE TEMP TABLE {temp_table} AS
             SELECT
                 tot_cnt,
@@ -203,10 +212,10 @@ def _populate_output_table(schema_madlib, source_table, output_table,
                     FROM {source_table}
                 ) src2
             ) subq
-            WHERE NOT {schema_madlib}.array_contains_null(x)
             GROUP BY tot_cnt, mean
-            """.format(**locals()))
-
+            """.format(**locals())
+        plpy.execute(sql1)
+        # WHERE NOT {schema_madlib}.array_contains_null(x)
         # create summary table
         summary_table = add_postfix(output_table, "_summary")
         q_summary = """
