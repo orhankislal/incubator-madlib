@@ -165,7 +165,6 @@ def _populate_output_table(schema_madlib, source_table, output_table,
     with MinWarning("info" if verbose else "error"):
         start = time()
         col_len = len(col_names)
-        col_names_as_float_array = py_list_to_sql_string(col_names, "float8")
         col_names_as_text_array = py_list_to_sql_string(col_names, "varchar")
         temp_table = unique_string()
         if get_cov:
@@ -180,17 +179,11 @@ def _populate_output_table(schema_madlib, source_table, output_table,
             function_name = "Correlation"
             agg_str = "{0}.correlation_agg(x, mean)".format(schema_madlib)
 
-        col_features_list = ["coalesce(" + col + ", 'nan'::double precision) AS " + col
-                                for col in col_names]
-        cols = ','.join(col_features_list)
-        sql0 = """drop table if exists t1;
-            CREATE TEMP TABLE t1 AS
-            SELECT {cols} FROM {source_table};""".format(**locals())
-        plpy.execute(sql0)
-        plpy.info("select * from t1")
-        source_table = "t1"
+        cols = ','.join(["coalesce(" + col + ", 'nan'::double precision) " 
+                            for col in col_names])
         # actual computation
         sql1 = """
+		    
             CREATE TEMP TABLE {temp_table} AS
             SELECT
                 tot_cnt,
@@ -199,7 +192,7 @@ def _populate_output_table(schema_madlib, source_table, output_table,
                 {agg_str} as cor_mat
             FROM
             (
-                SELECT {col_names_as_float_array} AS x
+                SELECT ARRAY[ {cols} ] AS x
                 FROM {source_table}
             ) src1,
             (
@@ -208,8 +201,9 @@ def _populate_output_table(schema_madlib, source_table, output_table,
                     {schema_madlib}.avg(x) AS mean
                 FROM
                 (
-                    SELECT {col_names_as_float_array} AS x
+                    select ARRAY[ {cols} ] AS x
                     FROM {source_table}
+					
                 ) src2
             ) subq
             GROUP BY tot_cnt, mean
