@@ -166,6 +166,7 @@ def _populate_output_table(schema_madlib, source_table, output_table,
         start = time()
         col_len = len(col_names)
         col_names_as_text_array = py_list_to_sql_string(col_names, "varchar")
+        col_names_as_float_array = py_list_to_sql_string(col_names, "float8")
         temp_table = unique_string()
         if get_cov:
             function_name = "Covariance"
@@ -181,12 +182,14 @@ def _populate_output_table(schema_madlib, source_table, output_table,
 
         cols = ','.join(["coalesce(" + col + ", 'nan'::double precision) " 
                             for col in col_names])
+        avgs = ','.join(["avg("+col+") AS avg_"+col+"" for col in col_names])
+        avg_array = ','.join(["avg_"+col+" " for col in col_names])
         # actual computation
         sql1 = """
 		    
             CREATE TEMP TABLE {temp_table} AS
             SELECT
-                tot_cnt,
+                count(*) AS tot_cnt,
                 count(*) AS non_null_cnt,
                 mean,
                 {agg_str} as cor_mat
@@ -196,18 +199,17 @@ def _populate_output_table(schema_madlib, source_table, output_table,
                 FROM {source_table}
             ) src1,
             (
-                SELECT
-                    count(*) AS tot_cnt,
-                    {schema_madlib}.avg(x) AS mean
+                SELECT ARRAY [ {avg_array} ] AS mean
                 FROM
                 (
-                    select ARRAY[ {cols} ] AS x
+                    SELECT {avgs}
                     FROM {source_table}
-					
-                ) src2
+                )src2
+                    
             ) subq
-            GROUP BY tot_cnt, mean
+            GROUP BY mean
             """.format(**locals())
+        
         plpy.execute(sql1)
         # WHERE NOT {schema_madlib}.array_contains_null(x)
         # create summary table

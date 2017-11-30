@@ -7,7 +7,7 @@
 #include <dbconnector/dbconnector.hpp>
 
 #include "correlation.hpp"
-
+#include <typeinfo>
 namespace madlib {
 
 namespace modules {
@@ -41,14 +41,24 @@ correlation_transition::run(AnyType& args) {
     }
     // args[1] is the current data vector
     if (args[1].isNull()) { return state; }
-    MappedColumnVector x;
+    MutableMappedColumnVector x;
     try {
-        MappedColumnVector xx = args[1].getAs<MappedColumnVector>();
+        MutableMappedColumnVector xx = args[1].getAs<MutableMappedColumnVector>();
         x.rebind(xx.memoryHandle(), xx.size());
     } catch (const ArrayWithNullException &e) {
         return state;
     }
+	for(int i = 0 ; i < x.size(); i ++){
+		if (std::isnan(x[i])) {
+			elog(WARNING, "%f %f " ,x[i], mean[i]);
+			//elog(WARNING, "%s", typeid(x));
+			//x.set(i, mean[i]);
+			x[i] = mean[i];
+		}
+	}
+	elog(WARNING, "%f %f %f", mean[0], mean[1], mean[2]);
     state += (x - mean) * trans(x - mean);
+	elog(WARNING, "%f %f %f", state(0,0), state(0,1), state(0,2));
 
     return state;
 }
