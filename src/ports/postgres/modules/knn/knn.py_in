@@ -554,8 +554,11 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
         if output_neighbors:
             knn_neighbors = (", array_agg(knn_temp.{train_id} ORDER BY "
                              "knn_temp.{dist_inverse} DESC) AS k_nearest_neighbours ").format(**locals())
+            dist_neighbors = (", array_agg(knn_temp.{dist_inverse} ORDER BY "
+                             "knn_temp.{dist_inverse} DESC) AS dist_neighbours ").format(**locals())
         else:
             knn_neighbors = ''
+            dist_neighbors = ''
 
         if use_kdtree:
             #CALL new funcs
@@ -615,6 +618,7 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                     {test_column_name} as "{test_column_name}"
                     {pred_out}
                     {knn_neighbors}
+                    {dist_neighbors}
                 FROM
                     {interim_table}  AS knn_temp
                     JOIN
