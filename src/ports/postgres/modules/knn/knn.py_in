@@ -33,6 +33,7 @@ from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import add_postfix
 from utilities.utilities import py_list_to_sql_string, is_valid_psql_type
+from utilities.utilities import num_features
 from utilities.utilities import unique_string
 from utilities.utilities import NUMERIC, ONLY_ARRAY
 from utilities.utilities import is_valid_psql_type
