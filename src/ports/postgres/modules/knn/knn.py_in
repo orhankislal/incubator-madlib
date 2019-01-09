@@ -299,6 +299,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
             """.format(test=test_unique_string, **locals())
         plpy.execute(sql)
 
+        return
         max_dist_sql = """
             SELECT {test_id}, max(dist) AS dists
             FROM {interim_table}
