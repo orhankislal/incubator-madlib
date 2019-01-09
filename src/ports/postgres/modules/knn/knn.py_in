@@ -205,7 +205,7 @@ def kd_tree(schema_madlib, source_table, output_table, point_column_name, depth,
                        CASE
                         {case_when_clause_str}
                        END AS case
-                FROM {source_table}")
+                FROM {source_table})
             """.format(case_when_clause_str="\n".join(case_when_clause),
                        **locals())
         plpy.execute(output_sql)
