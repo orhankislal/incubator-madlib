@@ -169,7 +169,7 @@ def kd_tree(schema_madlib, source_table, output_table, point_column_name, depth,
         clause_counter = 0
         for curr_level in range(depth):
             current_feature = depth % n_features + 1
-            for curr_leaf in range(pow(2, each_level)):
+            for curr_leaf in range(pow(2, curr_level)):
                 clause = clauses[clause_counter]
                 # get the median for current feature for rows that fall into curr_leaf
                 cutoff_sql = """
