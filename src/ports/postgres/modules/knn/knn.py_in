@@ -215,7 +215,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         tree_counter = 0
         current_feature = 1
         borders = {}
-        borders_table = unique_string() + "_borders"
+        borders_table = unique_string("_borders")
         for i in range(0,num_features):
             borders[i] = []
 
@@ -262,7 +262,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         insert_sql += " , ".join(insert_values_sql_cons) + " )"
         plpy.execute(insert_sql)
 
-        test_view = unique_string()+"_test_view"
+        test_view = unique_string("test_view")
 
         plpy.execute("DROP VIEW IF EXISTS {test_view}".format(**locals()))
         test_view_sql = " CREATE VIEW {test_view} AS SELECT *, CASE ".format(**locals())
@@ -294,6 +294,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
                 **locals())
         plpy.execute(sql)
 
+        return
         max_dist_sql = """SELECT {test_id}, max(dist) AS dists
                           FROM {interim_table} GROUP BY {test_id} ORDER BY {test_id}""".format(**locals())
         redo = []
@@ -333,7 +334,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
 
         if len(redo) > 0:
 
-            tmp_view = unique_string() + "_tmp_view"
+            tmp_view = unique_string("_tmp_view")
             plpy.execute("DROP VIEW IF EXISTS {tmp_view}".format(**locals()))
             plpy.execute(""" CREATE VIEW {tmp_view} AS
                 SELECT * FROM {test_source}
