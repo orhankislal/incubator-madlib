@@ -49,6 +49,7 @@ from utilities.validate_args import is_var_valid
 from utilities.validate_args import quote_ident
 
 MAX_WEIGHT_ZERO_DIST = 1e6
+EPSILON = 1/MAX_WEIGHT_ZERO_DIST
 
 
 def knn_validate_src(schema_madlib, point_source, point_column_name, point_id,
@@ -297,14 +298,16 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         test_view = unique_string("test_view")
 
         plpy.execute("DROP VIEW IF EXISTS {test_view}".format(**locals()))
-        test_view_sql = " CREATE VIEW {test_view} AS SELECT *, CASE ".format(**locals())
-
+        test_cases = ""
         for i in range(0, num_leaves):
-            test_view_sql += " WHEN {0} THEN {1}::INTEGER ".format(clauses[i], i)
+            test_cases += " WHEN {0} THEN {1}::INTEGER ".format(clauses[i], i)
 
-        test_view_sql += "END AS r_id FROM {0}".format(test_source)
+        test_view_sql = """ CREATE VIEW {test_view} AS
+                                SELECT {point_id}, {point_column_name}::DOUBLE PRECISION[],
+                                    CASE {test_cases} END AS r_id
+                                FROM {test_source}""".format(**locals())
 
-        plpy.execute(test_view_sql)
+        plpy.execute(test_view_sql.format())
 
         joined_regions = unique_string("joined_regions")
         plpy.execute("""
@@ -316,13 +319,32 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         exp_table = unique_string("exp_table")
         plpy.execute("""
             CREATE TABLE {exp_table} AS
-            SELECT {point_id}, dim, r_border
+            SELECT {point_id}, {point_column_name}::DOUBLE PRECISION[], dim,
+                   CASE
+                        WHEN r_border-{point_column_name}[dim] > 0
+                        THEN r_border+{EPSILON}
+                        ELSE r_border-{EPSILON} END AS border_eps
             FROM {joined_regions} INNER JOIN (
-                    SELECT {point_id}, min(abs({point_column_name}[dim]-r_border)) min_border
+                    SELECT {point_id}, min(abs(r_border-{point_column_name}[dim])) min_border
                     FROM {joined_regions} GROUP BY {point_id}
                 )q1 USING ({point_id})
-            WHERE min_border = abs({point_column_name}[dim]-r_border)
+            WHERE min_border = abs(r_border-{point_column_name}[dim])
+            """.format(EPSILON=EPSILON, **locals()))
+
+        plpy.execute("""
+            UPDATE {exp_table} SET {point_column_name}[dim]=border_eps
             """.format(**locals()))
+
+        ext_test_view = unique_string("ext_test_view")
+        plpy.execute("DROP VIEW IF EXISTS {ext_test_view}".format(**locals()))
+        ext_test_view_sql = """ CREATE VIEW {ext_test_view} AS
+            SELECT * FROM {test_view}
+            UNION
+            SELECT {point_id}, {point_column_name},
+                CASE {test_cases} END AS r_id
+            FROM {exp_table}
+            """.format(**locals())
+        plpy.execute(ext_test_view_sql)
 
         sql = """ CREATE TABLE {interim_table} AS
             SELECT * FROM (
@@ -337,7 +359,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
                            {train}.{point_id} AS {train_id},test.{test_id} AS {test_id},
                            {fn_dist}({train}.data,test.data) AS dist
                            {label_out}
-                    FROM {kd_out} AS {train} INNER JOIN {test_view} AS test ON {train}.r_id = test.r_id
+                    FROM {kd_out} AS {train} INNER JOIN {ext_test_view} AS test ON {train}.r_id = test.r_id
                     ) q1
                 )q2
             WHERE r <= {in_k}""".format(max_weight_zero_dist=MAX_WEIGHT_ZERO_DIST,
