@@ -30,6 +30,7 @@ import plpy
 import copy
 from math import floor
 from math import log
+from math import ceil
 from utilities.control import MinWarning
 from utilities.utilities import _assert
 from utilities.utilities import add_postfix
@@ -156,23 +157,19 @@ def kd_tree(schema_madlib, source_table, output_table, point_column_name, depth,
         for i in range(0, depth):
             for j in range(0, pow(2,i)):
                 clause = clauses[clause_counter]
-                cutoff_sql = """SELECT percentile_disc(0.5) within group (
+                cutoff_sql = """SELECT percentile_disc(0.5) WITHIN GROUP (
                             ORDER BY {point_column_name}[{current_feature}]) AS cutoff
                         FROM {source_table} {clause}""".format(**locals())
 
                 cutoff = plpy.execute(cutoff_sql)[0]['cutoff']
 
-                # plpy.info(regions)
                 region = regions.pop(0)
-                # plpy.info("here is the region")
-                # plpy.info(region)
                 region1 = copy.deepcopy(region)
                 region2 = copy.deepcopy(region)
                 region1[current_feature-1] = (region[current_feature-1][0], cutoff)
                 region2[current_feature-1] = (cutoff, region[current_feature-1][1])
                 regions.append(region1)
                 regions.append(region2)
-                # plpy.info(regions)
 
                 cutoffs.append(cutoff if cutoff is not None else "NULL")
                 clause_counter = clause_counter + 1
@@ -242,7 +239,10 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         num_leaves = len(tree)+1
 
         depth = int(log(num_leaves, 2))
+        cover_perc = 10
 
+        quant = ceil(num_leaves/cover_perc)/(num_features*2)
+        plpy.info("quant {0}".format(quant))
         clauses = []
         clause_counter = 0
         tree_counter = 0
@@ -325,10 +325,12 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
                         THEN r_border+{EPSILON}
                         ELSE r_border-{EPSILON} END AS border_eps
             FROM {joined_regions} INNER JOIN (
-                    SELECT {point_id}, min(abs(r_border-{point_column_name}[dim])) min_border
+                    SELECT {point_id},
+                           percentile_disc({quant}) WITHIN GROUP (ORDER BY
+                                abs(r_border-{point_column_name}[dim])) min_border
                     FROM {joined_regions} GROUP BY {point_id}
                 )q1 USING ({point_id})
-            WHERE min_border = abs(r_border-{point_column_name}[dim])
+            WHERE abs(r_border-{point_column_name}[dim]) < min_border
             """.format(EPSILON=EPSILON, **locals()))
 
         plpy.execute("""
