@@ -449,7 +449,9 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
     output_neighbors BOOLEAN,
     fn_dist TEXT,
     weighted_avg BOOLEAN,
-    use_kdtree BOOLEAN
+    use_kdtree BOOLEAN,
+    depth INTEGER,
+    quant DOUBLE PRECISION
 ) RETURNS VARCHAR AS $$
     PythonFunction(`knn', `knn', `knn')
 $$ LANGUAGE plpythonu VOLATILE
@@ -472,7 +474,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
     DECLARE
     returnstring VARCHAR;
 BEGIN
-    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, FALSE);
+    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, FALSE, 1, 1);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE

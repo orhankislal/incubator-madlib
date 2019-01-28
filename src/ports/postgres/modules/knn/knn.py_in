@@ -225,9 +225,10 @@ def validate_kd_tree(source_table, output_table, point_column_name, depth):
                    "than 0.".format(depth))
 
 def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
-        label_column_name, test_source, test_column_name, test_id, interim_table,
-        in_k, output_neighbors, fn_dist, weighted_avg, label_out,
-        comma_label_out_alias, label_name, train, train_id, dist_inverse, **kwargs):
+             label_column_name, test_source, test_column_name, test_id,
+             interim_table, in_k, output_neighbors, fn_dist, weighted_avg,
+             label_out, comma_label_out_alias, label_name, train, train_id,
+             dist_inverse, quant, **kwargs):
 
     with MinWarning("error"):
 
@@ -241,8 +242,10 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         depth = int(log(num_leaves, 2))
         cover_perc = 10
 
-        quant = ceil(num_leaves/cover_perc)/(num_features*2)
+        # quant = ceil(num_leaves/cover_perc)/(num_features*2)
+        # quant = 0.075
         plpy.info("quant {0}".format(quant))
+
         clauses = []
         clause_counter = 0
         tree_counter = 0
@@ -319,7 +322,8 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         exp_table = unique_string("exp_table")
         plpy.execute("""
             CREATE TABLE {exp_table} AS
-            SELECT {point_id}, {point_column_name}::DOUBLE PRECISION[], dim,
+            SELECT {point_id}, {point_column_name}::DOUBLE PRECISION[],
+                   {point_column_name}::DOUBLE PRECISION[] AS old_data, dim,
                    CASE
                         WHEN r_border-{point_column_name}[dim] > 0
                         THEN r_border+{EPSILON}
@@ -330,7 +334,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
                                 abs(r_border-{point_column_name}[dim])) min_border
                     FROM {joined_regions} GROUP BY {point_id}
                 )q1 USING ({point_id})
-            WHERE abs(r_border-{point_column_name}[dim]) < min_border
+            WHERE abs(r_border-{point_column_name}[dim]) <= min_border
             """.format(EPSILON=EPSILON, **locals()))
 
         plpy.execute("""
@@ -342,7 +346,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
         ext_test_view_sql = """ CREATE VIEW {ext_test_view} AS
             SELECT * FROM {test_view}
             UNION
-            SELECT {point_id}, {point_column_name},
+            SELECT {point_id}, old_data AS {point_column_name},
                 CASE {test_cases} END AS r_id
             FROM {exp_table}
             """.format(**locals())
@@ -350,7 +354,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
 
         sql = """ CREATE TABLE {interim_table} AS
             SELECT * FROM (
-                SELECT row_number() over (partition by {test_id} ORDER BY dist) AS r,
+                SELECT row_number() OVER (PARTITION BY {test_id} ORDER BY dist) AS r,
                        {test_id}, {train_id}, dist,
                        CASE WHEN dist = 0.0 THEN {max_weight_zero_dist}
                                  ELSE 1.0 / dist
@@ -449,7 +453,7 @@ def knn_tree(schema_madlib, kd_out, point_source, point_column_name, point_id,
 
 def knn(schema_madlib, point_source, point_column_name, point_id,
         label_column_name, test_source, test_column_name, test_id, output_table,
-        k, output_neighbors, fn_dist, weighted_avg, use_kdtree, **kwargs):
+        k, output_neighbors, fn_dist, weighted_avg, use_kdtree, depth, quant, **kwargs):
     """
         KNN function to find the K Nearest neighbours
         Args:
@@ -603,19 +607,23 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
             #CALL new funcs
 
             size = plpy.execute("SELECT count(*) AS count FROM {0}".format(point_source))[0]['count']
-            depth = int(floor(log(size, 10)))
+            # depth = int(floor(log(size, 10)))
             if depth < 1:
                 use_kdtree = False
             else:
-                if depth > 3:
-                    depth = 3
+                # if depth > 3:
+                #     depth = 3
+                # depth = 3
+                plpy.info(depth)
                 kd_output_table = unique_string(desp='kd_tree')
-                kd_tree(schema_madlib, point_source, kd_output_table, point_column_name, depth)
+                kd_tree(schema_madlib, point_source, kd_output_table,
+                        point_column_name, depth)
                 knn_tree(schema_madlib, kd_output_table, point_source,
                          point_column_name, point_id, label_column_name,
                          test_source, test_column_name, test_id, interim_table,
                          k, output_neighbors, fn_dist, weighted_avg, label_out,
-                         comma_label_out_alias, label_name, train, train_id, dist_inverse)
+                         comma_label_out_alias, label_name, train, train_id,
+                         dist_inverse, quant)
                 test_id_temp = test_id
         if not use_kdtree:
             plpy.execute("""
@@ -668,7 +676,7 @@ def knn(schema_madlib, point_source, point_column_name, point_id,
                          {view_grp_by}
             """
         plpy.execute(sql.format(**locals()))
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(interim_table))
+        # plpy.execute("DROP TABLE IF EXISTS {0}".format(interim_table))
         return
 
 
