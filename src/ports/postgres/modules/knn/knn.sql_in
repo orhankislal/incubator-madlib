@@ -449,9 +449,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
     output_neighbors BOOLEAN,
     fn_dist TEXT,
     weighted_avg BOOLEAN,
-    use_kdtree BOOLEAN,
-    depth INTEGER,
-    quant DOUBLE PRECISION
+    algorithm VARCHAR,
+    algorithm_params VARCHAR
 ) RETURNS VARCHAR AS $$
     PythonFunction(`knn', `knn', `knn')
 $$ LANGUAGE plpythonu VOLATILE
@@ -469,12 +468,37 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
     k INTEGER,
     output_neighbors BOOLEAN,
     fn_dist TEXT,
+    weighted_avg BOOLEAN,
+    algorithm VARCHAR
+) RETURNS VARCHAR AS $$
+    DECLARE
+    returnstring VARCHAR;
+BEGIN
+    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                                     NULL);
+    RETURN returnstring;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
+    point_source VARCHAR,
+    point_column_name VARCHAR,
+    point_id VARCHAR,
+    label_column_name VARCHAR,
+    test_source VARCHAR,
+    test_column_name VARCHAR,
+    test_id VARCHAR,
+    output_table VARCHAR,
+    k INTEGER,
+    output_neighbors BOOLEAN,
+    fn_dist TEXT,
     weighted_avg BOOLEAN
 ) RETURNS VARCHAR AS $$
     DECLARE
     returnstring VARCHAR;
 BEGIN
-    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, FALSE, 1, 1);
+    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+                                     NULL, NULL);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE
@@ -496,7 +520,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.knn(
     DECLARE
     returnstring VARCHAR;
 BEGIN
-    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, FALSE);
+    returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+                                     FALSE, NULL, NULL);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE
@@ -519,7 +544,8 @@ DECLARE
     returnstring VARCHAR;
 BEGIN
     returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-                                     'MADLIB_SCHEMA.squared_dist_norm2', FALSE);
+                                     'MADLIB_SCHEMA.squared_dist_norm2', FALSE,
+                                     NULL, NULL);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE
@@ -540,7 +566,8 @@ DECLARE
     returnstring VARCHAR;
 BEGIN
     returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,
-                                     'MADLIB_SCHEMA.squared_dist_norm2', FALSE);
+                                     'MADLIB_SCHEMA.squared_dist_norm2', FALSE,
+                                     NULL, NULL);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE
@@ -560,7 +587,8 @@ DECLARE
     returnstring VARCHAR;
 BEGIN
     returnstring = MADLIB_SCHEMA.knn($1,$2,$3,$4,$5,$6,$7,$8,1,TRUE,
-                                     'MADLIB_SCHEMA.squared_dist_norm2',FALSE);
+                                     'MADLIB_SCHEMA.squared_dist_norm2',FALSE,
+                                     NULL, NULL);
     RETURN returnstring;
 END;
 $$ LANGUAGE plpgsql VOLATILE
