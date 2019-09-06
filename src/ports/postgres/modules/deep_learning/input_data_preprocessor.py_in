@@ -176,15 +176,25 @@ class InputDataPreprocessorDL(object):
             distributed_by_clause = ''
         else:
             distributed_by_clause= ' DISTRIBUTED BY (buffer_id) '
+        dep_shape_col = add_postfix(
+            MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL, "_shape")
+        ind_shape_col = add_postfix(
+            MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL, "_shape")
         sql = """
             CREATE TABLE {self.output_table} AS
-            SELECT * FROM
+            SELECT {self.schema_madlib}.convert_array_to_bytea({x}) AS {x},
+                   {self.schema_madlib}.convert_array_to_bytea({y}) AS {y},
+                   array_dims({x}) AS {ind_shape_col},
+                   array_dims({y}) AS {dep_shape_col},
+                   buffer_id
+            FROM
             (
-                SELECT {self.schema_madlib}.agg_array_concat(
-                            ARRAY[{norm_tbl}.x_norm::{FLOAT32_SQL_TYPE}[]]) AS {x},
-                       {self.schema_madlib}.agg_array_concat(
-                            ARRAY[{norm_tbl}.y]) AS {y},
-                       ({norm_tbl}.row_id%{self.num_of_buffers})::smallint AS buffer_id
+                SELECT
+                    {self.schema_madlib}.agg_array_concat(
+                        ARRAY[{norm_tbl}.x_norm::{FLOAT32_SQL_TYPE}[]]) AS {x},
+                    {self.schema_madlib}.agg_array_concat(
+                        ARRAY[{norm_tbl}.y]) AS {y},
+                    ({norm_tbl}.row_id%{self.num_of_buffers})::smallint AS buffer_id
                 FROM {norm_tbl}
                 GROUP BY buffer_id
             ) b
@@ -486,9 +496,11 @@ class InputDataPreprocessorDocumentation:
         following columns:
 
         buffer_id               -- INTEGER.  Unique id for packed table.
-        dependent_varname       -- ANYARRAY[]. Packed array of dependent variables.
-        independent_varname     -- REAL[]. Packed array of independent
+        dependent_varname       -- BYTEA. Packed array of dependent variables.
+        independent_varname     -- BYTEA. Packed array of independent
                                    variables.
+        dependent_varname       -- TEXT. Shape of the dependent variable buffer.
+        independent_varname     -- TEXT. Shape of the independent variable buffer.
 
         ---------------------------------------------------------------------------
         The algorithm also creates a summary table named <output_table>_summary
@@ -581,9 +593,11 @@ class InputDataPreprocessorDocumentation:
         following columns:
 
         buffer_id               -- INTEGER.  Unique id for packed table.
-        dependent_varname       -- ANYARRAY[]. Packed array of dependent variables.
-        independent_varname     -- REAL[]. Packed array of independent
+        dependent_varname       -- BYTEA. Packed array of dependent variables.
+        independent_varname     -- BYTEA. Packed array of independent
                                    variables.
+        dependent_varname       -- TEXT. Shape of the dependent variable buffer.
+        independent_varname     -- TEXT. Shape of the independent variable buffer.
 
         ---------------------------------------------------------------------------
         The algorithm also creates a summary table named <output_table>_summary
