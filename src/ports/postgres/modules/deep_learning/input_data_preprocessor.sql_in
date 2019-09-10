@@ -828,14 +828,6 @@ RETURNS VARCHAR AS $$
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `MODIFIES SQL DATA', `');
 
-
-DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.agg_array_concat(anyarray);
-CREATE AGGREGATE MADLIB_SCHEMA.agg_array_concat(anyarray) (
-   SFUNC = array_cat,
-   STYPE = anyarray,
-   PREFUNC = array_cat
-   );
-
 CREATE FUNCTION MADLIB_SCHEMA.convert_array_to_bytea(var REAL[])
 RETURNS BYTEA
 AS
@@ -873,3 +865,25 @@ import numpy as np
 return np.frombuffer(var, dtype=np.int16)
 $$ LANGUAGE plpythonu;
 
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_transition(anyarray, anyarray)
+RETURNS anyarray AS $$
+    PythonFunctionBodyOnly(deep_learning, input_data_preprocessor)
+    return madlib_keras.agg_array_concat_transition(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_merge(anyarray, anyarray)
+RETURNS anyarray AS $$
+    PythonFunctionBodyOnly(deep_learning, input_data_preprocessor)
+    return madlib_keras.agg_array_concat_merge(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.agg_array_concat(anyarray);
+CREATE AGGREGATE MADLIB_SCHEMA.agg_array_concat(anyarray) (
+   SFUNC = MADLIB_SCHEMA.agg_array_concat_transition,
+   STYPE = anyarray,
+   PREFUNC = MADLIB_SCHEMA.agg_array_concat_merge
+   FINALFUNC=MADLIB_SCHEMA.convert_array_to_bytea
+   );

@@ -23,6 +23,7 @@
 
 """
 from math import ceil
+import numpy as np
 import plpy
 
 from internal.db_utils import get_distinct_col_levels
@@ -47,6 +48,37 @@ from utilities.validate_args import get_expr_type
 from madlib_keras_helper import *
 
 NUM_CLASSES_COLNAME = "num_classes"
+
+def agg_array_concat_transition(state, input_array):
+
+    if not input_array:
+        return state
+    np_input_array = np.array(input_array).flatten().tolist()
+    if not state:
+        state = np_input_array
+    else:
+        state.extend(np_input_array)
+    return state
+
+def agg_array_concat_merge(input_array1, input_array2):
+
+    if not input_array2:
+        return input_array1
+    elif not input_array1:
+        return input_array2
+    else:
+        input_array1.extend(np_input_array2)
+        return input_array1
+
+def agg_array_concat_final(input_array1, input_array2):
+
+    if not input_array2:
+        return input_array1
+    elif not input_array1:
+        return input_array2
+    else:
+        input_array1.extend(np_input_array2)
+        return input_array1
 
 class InputDataPreprocessorDL(object):
     def __init__(self, schema_madlib, source_table, output_table,
@@ -327,7 +359,6 @@ class InputDataPreprocessorDL(object):
         self.buffer_size = buffer_size_calculator.calculate_default_buffer_size(
             self.buffer_size, num_rows_in_tbl, indepdent_var_dim)
         return ceil((1.0 * num_rows_in_tbl) / self.buffer_size)
-
 
 class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
     def __init__(self, schema_madlib, source_table, output_table,
