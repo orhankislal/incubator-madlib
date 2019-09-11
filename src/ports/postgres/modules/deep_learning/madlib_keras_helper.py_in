@@ -144,7 +144,7 @@ def get_image_count_per_seg_for_minibatched_data_from_db(table_name):
     else:
         # The number of images in the buffer is the first dimension in the shape.
         images_per_seg = plpy.execute(
-            """ SELECT gp_segment_id, sum(shape_col[1]) AS images_per_seg FROM
+            """ SELECT gp_segment_id, sum({0}[1]) AS images_per_seg
                 FROM {1}
                 GROUP BY gp_segment_id
             """.format(shape_col, table_name))
