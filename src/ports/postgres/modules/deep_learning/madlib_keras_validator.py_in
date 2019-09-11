@@ -115,7 +115,7 @@ class InputValidator:
             # This query will fail if an image in independent var does not have the
             # same number of dimensions as the input_shape.
             result = plpy.execute(query)[0]['shape']
-            result = parse_shape(result)[1:]
+            result = result[1:]
         else:
             array_upper_query = ", ".join("array_upper({0}, {1}) AS n_{2}".format(
                 independent_varname, i+offset, i) for i in range(len(input_shape)))

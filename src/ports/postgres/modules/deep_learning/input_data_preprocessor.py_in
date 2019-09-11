@@ -139,6 +139,26 @@ class InputDataPreprocessorDL(object):
         return 'ARRAY[{0}]::INTEGER[]::{1}[]'.format(
             ', '.join(one_hot_encoded_expr), SMALLINT_SQL_TYPE)
 
+    def _get_independent_var_shape(self):
+
+        shape = plpy.execute(
+            "SELECT array_dims({0}) AS shape FROM {1} LIMIT 1".format(
+            self.independent_varname, self.source_table))[0]['shape']
+        return parse_shape(shape)
+
+    def _get_dependent_var_shape(self):
+
+        if self.num_classes:
+            shape = [self.num_classes]
+        elif self.dependent_levels:
+            shape = [len(self.dependent_levels)]
+        else:
+            shape = plpy.execute(
+                "SELECT array_dims({0}) AS shape FROM {1} LIMIT 1".format(
+                self.dependent_varname, self.source_table))[0]['shape']
+            shape = parse_shape(shape)
+        return shape
+
     def input_preprocessor_dl(self, order_by_random=True):
         """
             Creates the output and summary table that does the following
@@ -180,12 +200,17 @@ class InputDataPreprocessorDL(object):
             MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL, "_shape")
         ind_shape_col = add_postfix(
             MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL, "_shape")
+
+        ind_shape = self._get_independent_var_shape()
+        ind_shape = ','.join([str(i) for i in ind_shape])
+        dep_shape = self._get_dependent_var_shape()
+        dep_shape = ','.join([str(i) for i in dep_shape])
         sql = """
             CREATE TABLE {self.output_table} AS
             SELECT {self.schema_madlib}.convert_array_to_bytea({x}) AS {x},
                    {self.schema_madlib}.convert_array_to_bytea({y}) AS {y},
-                   array_dims({x}) AS {ind_shape_col},
-                   array_dims({y}) AS {dep_shape_col},
+                   ARRAY[count,{ind_shape}]::SMALLINT[] AS {ind_shape_col},
+                   ARRAY[count,{dep_shape}]::SMALLINT[] AS {dep_shape_col},
                    buffer_id
             FROM
             (
@@ -194,7 +219,8 @@ class InputDataPreprocessorDL(object):
                         ARRAY[{norm_tbl}.x_norm::{FLOAT32_SQL_TYPE}[]]) AS {x},
                     {self.schema_madlib}.agg_array_concat(
                         ARRAY[{norm_tbl}.y]) AS {y},
-                    ({norm_tbl}.row_id%{self.num_of_buffers})::smallint AS buffer_id
+                    ({norm_tbl}.row_id%{self.num_of_buffers})::smallint AS buffer_id,
+                    count(*) AS count
                 FROM {norm_tbl}
                 GROUP BY buffer_id
             ) b
