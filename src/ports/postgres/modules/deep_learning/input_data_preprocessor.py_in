@@ -49,7 +49,7 @@ from madlib_keras_helper import *
 
 NUM_CLASSES_COLNAME = "num_classes"
 
-def agg_array_concat_transition(state, input_array):
+def agg_array_concat_transition(state, input_array, **kwargs):
 
     if not input_array:
         return state
@@ -60,17 +60,7 @@ def agg_array_concat_transition(state, input_array):
         state.extend(np_input_array)
     return state
 
-def agg_array_concat_merge(input_array1, input_array2):
-
-    if not input_array2:
-        return input_array1
-    elif not input_array1:
-        return input_array2
-    else:
-        input_array1.extend(np_input_array2)
-        return input_array1
-
-def agg_array_concat_final(input_array1, input_array2):
+def agg_array_concat_merge(input_array1, input_array2, **kwargs):
 
     if not input_array2:
         return input_array1
@@ -239,8 +229,8 @@ class InputDataPreprocessorDL(object):
         dep_shape = ','.join([str(i) for i in dep_shape])
         sql = """
             CREATE TABLE {self.output_table} AS
-            SELECT {self.schema_madlib}.convert_array_to_bytea({x}) AS {x},
-                   {self.schema_madlib}.convert_array_to_bytea({y}) AS {y},
+            SELECT {x},
+                   {y},
                    ARRAY[count,{ind_shape}]::SMALLINT[] AS {ind_shape_col},
                    ARRAY[count,{dep_shape}]::SMALLINT[] AS {dep_shape_col},
                    buffer_id

@@ -865,25 +865,52 @@ import numpy as np
 return np.frombuffer(var, dtype=np.int16)
 $$ LANGUAGE plpythonu;
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_transition(anyarray, anyarray)
-RETURNS anyarray AS $$
-    PythonFunctionBodyOnly(deep_learning, input_data_preprocessor)
-    return madlib_keras.agg_array_concat_transition(**globals())
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_transition(state REAL[], input_array REAL[])
+RETURNS REAL[] AS $$
+    PythonFunctionBodyOnlyNoSchema(`deep_learning', `input_data_preprocessor')
+    return input_data_preprocessor.agg_array_concat_transition(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 
-CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_merge(anyarray, anyarray)
-RETURNS anyarray AS $$
-    PythonFunctionBodyOnly(deep_learning, input_data_preprocessor)
-    return madlib_keras.agg_array_concat_merge(**globals())
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_merge(input_array1 REAL[], input_array2 REAL[])
+RETURNS REAL[] AS $$
+    PythonFunctionBodyOnlyNoSchema(`deep_learning', `input_data_preprocessor')
+    return input_data_preprocessor.agg_array_concat_merge(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
-DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.agg_array_concat(anyarray);
-CREATE AGGREGATE MADLIB_SCHEMA.agg_array_concat(anyarray) (
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.agg_array_concat(REAL[]);
+CREATE AGGREGATE MADLIB_SCHEMA.agg_array_concat(REAL[]) (
+   STYPE = REAL[],
    SFUNC = MADLIB_SCHEMA.agg_array_concat_transition,
-   STYPE = anyarray,
-   PREFUNC = MADLIB_SCHEMA.agg_array_concat_merge
-   FINALFUNC=MADLIB_SCHEMA.convert_array_to_bytea
+   m4_ifdef(`__POSTGRESQL__', `', `prefunc= MADLIB_SCHEMA.agg_array_concat_merge,')
+   FINALFUNC=MADLIB_SCHEMA.convert_array_to_bytea,
+   INITCOND='{}'
+
+   );
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_transition(state SMALLINT[], input_array SMALLINT[])
+RETURNS SMALLINT[] AS $$
+    PythonFunctionBodyOnlyNoSchema(`deep_learning', `input_data_preprocessor')
+    return input_data_preprocessor.agg_array_concat_transition(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.agg_array_concat_merge(input_array1 SMALLINT[], input_array2 SMALLINT[])
+RETURNS SMALLINT[] AS $$
+    PythonFunctionBodyOnlyNoSchema(`deep_learning', `input_data_preprocessor')
+    return input_data_preprocessor.agg_array_concat_merge(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.agg_array_concat(SMALLINT[]);
+CREATE AGGREGATE MADLIB_SCHEMA.agg_array_concat(SMALLINT[]) (
+   STYPE = SMALLINT[],
+   SFUNC = MADLIB_SCHEMA.agg_array_concat_transition,
+   m4_ifdef(`__POSTGRESQL__', `', `prefunc= MADLIB_SCHEMA.agg_array_concat_merge,')
+   FINALFUNC=MADLIB_SCHEMA.convert_array_to_bytea,
+   INITCOND='{}'
+
    );
