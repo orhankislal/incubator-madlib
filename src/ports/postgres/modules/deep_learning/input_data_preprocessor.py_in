@@ -67,7 +67,7 @@ def agg_array_concat_merge(input_array1, input_array2, **kwargs):
     elif not input_array1:
         return input_array2
     else:
-        input_array1.extend(np_input_array2)
+        input_array1.extend(input_array2)
         return input_array1
 
 class InputDataPreprocessorDL(object):
