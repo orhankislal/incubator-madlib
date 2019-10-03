@@ -33,6 +33,7 @@ from madlib_keras_helper import MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL
 from madlib_keras_helper import MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL
 from madlib_keras_helper import METRIC_TYPE_COLNAME
 from madlib_keras_helper import parse_shape
+from madlib_keras_helper import query_model_configs
 
 from utilities.minibatch_validation import validate_bytea_var_for_minibatch
 from utilities.utilities import _assert
@@ -261,6 +262,11 @@ class FitInputValidator(object):
         self._validate_input_args()
 
     def _validate_input_args(self):
+        self._validate_common_args()
+        InputValidator.validate_model_arch_table(self.module_name, self.model_arch_table,
+            self.model_arch_id)
+
+    def _validate_common_args(self):
         _assert(self.num_iterations > 0,
             "{0}: Number of iterations cannot be < 1.".format(self.module_name))
         _assert(self._is_valid_metrics_compute_frequency(),
@@ -281,8 +287,6 @@ class FitInputValidator(object):
                                          self.dependent_varname)
 
         self._validate_validation_table()
-        InputValidator.validate_model_arch_table(self.module_name, self.model_arch_table,
-            self.model_arch_id)
         if self.warm_start:
             input_tbl_valid(self.output_model_table, self.module_name)
             input_tbl_valid(self.output_summary_model_table, self.module_name)
@@ -428,13 +432,17 @@ class FitMultipleInputValidator(FitInputValidator):
                  independent_varname, num_iterations, model_info_table,
                  metrics_compute_frequency, warm_start):
 
-        input_tbl_valid(self.model_selection_table, self.module_name)
-        input_tbl_valid(self.model_selection_summary_table, self.module_name,
+        self.module_name = 'madlib_keras_fit_multiple'
+
+        input_tbl_valid(model_selection_table, self.module_name)
+        input_tbl_valid(model_selection_summary_table, self.module_name,
                         error_suffix_str="Please ensure that the model selection table ({0}) "
                                          "has been created by "
                                          "load_model_selection_table().".format(self.model_selection_table))
-        self.msts, self.model_arch_table = self.query_model_configs()
-        output_tbl_valid(self.model_info_table, self.module_name)
+        self.msts, self.model_arch_table = self.query_model_configs(
+            model_selection_table, model_selection_summary_table,
+            mst_key_col, model_arch_table_col)
+        output_tbl_valid(model_info_table, self.module_name)
         super(FitMultipleInputValidator, self).__init__(source_table,
                                                         validation_table,
                                                         output_model_table,
@@ -445,47 +453,6 @@ class FitMultipleInputValidator(FitInputValidator):
                                                         num_iterations,
                                                         metrics_compute_frequency,
                                                         warm_start)
-
-    def query_model_configs(self):
-        msts_query = """
-                     SELECT * FROM {self.model_selection_table}
-                     ORDER BY {self.mst_key_col}
-                     """.format(**locals())
-        model_arch_table_query = """
-                                 SELECT {self.model_arch_table_col}
-                                 FROM {self.model_selection_summary_table}
-                                 """.format(**locals())
-        msts = list(plpy.execute(msts_query))
-        model_arch_table = plpy.execute(model_arch_table_query)[0][self.model_arch_table_col]
-        return msts, model_arch_table
-
     def _validate_input_args(self):
-        _assert(self.num_iterations > 0,
-                "{0}: Number of iterations cannot be < 1.".format(self.module_name))
-        _assert(self._is_valid_metrics_compute_frequency(),
-                "{0}: metrics_compute_frequency must be in the range (1 - {1}).".format(
-                    self.module_name, self.num_iterations))
-        input_tbl_valid(self.source_table, self.module_name)
-        input_tbl_valid(self.source_summary_table, self.module_name,
-                        error_suffix_str="Please ensure that the source table ({0}) "
-                                         "has been preprocessed by "
-                                         "the image preprocessor.".format(self.source_table))
-        cols_in_tbl_valid(self.source_summary_table, [CLASS_VALUES_COLNAME,
-                                                      NORMALIZING_CONST_COLNAME, DEPENDENT_VARTYPE_COLNAME,
-                                                      'dependent_varname', 'independent_varname'], self.module_name)
-
-        # Source table and validation tables must have the same schema
-        self._validate_input_table(self.source_table)
-        validate_bytea_var_for_minibatch(self.source_table,
-                                         self.dependent_varname)
-
-        self._validate_validation_table()
-        input_tbl_valid(self.model_arch_table, self.module_name)
-
-        if self.warm_start:
-            input_tbl_valid(self.output_model_table, self.module_name)
-            input_tbl_valid(self.output_summary_model_table, self.module_name)
-        else:
-            output_tbl_valid(self.output_model_table, self.module_name)
-            output_tbl_valid(self.output_summary_model_table, self.module_name)
+        super(FitMultipleInputValidator, self)._validate_common_args(self)
 

@@ -106,7 +106,7 @@ class FitMultipleModel():
         self.mst_weights_tbl = unique_string(desp='mst_weights')
         self.mst_current_schedule_tbl = unique_string(desp='mst_current_schedule')
 
-        self.dist_keys = self.query_dist_keys()
+        self.dist_keys = self.query_dist_keys(self.source_table, self.dist_key_col)
         if len(self.msts) < len(self.dist_keys):
             self.msts_for_schedule = self.msts + [None] * \
                 (len(self.dist_keys) - len(self.msts))
@@ -167,7 +167,8 @@ class FitMultipleModel():
             seg_ids = self.seg_ids_valid
             images_per_seg = self.images_per_seg_valid
         for mst in self.msts:
-            state = self.query_weights(mst[self.mst_key_col])
+            state = self.query_weights(self.model_output_table, self.model_weights_col,
+                self.mst_key_col, mst[self.mst_key_col])
             model_arch, _ = get_model_arch_weights(self.model_arch_table, mst[self.model_id_col])
             serialized_weights = \
                 madlib_keras_serializer.get_serialized_1d_weights_from_state(
@@ -188,20 +189,11 @@ class FitMultipleModel():
             self.info_str += "\n\tmst_key={0}: metric={1}, loss={2}".format(mst[self.mst_key_col], metric, loss)
 
     def generate_schedule(self, msts):
+        """ Generate the schedule for models hopping to segments """
         grand_schedule = {}
         for index, dist_key in enumerate(self.dist_keys):
             grand_schedule[dist_key] = rotate(msts, index)
         return grand_schedule
-
-    def query_dist_keys(self):
-        dist_key_query = """
-                         SELECT DISTINCT({dist_key_col}) FROM {source_table}
-                         ORDER BY {dist_key_col}
-                         """.format(dist_key_col=dist_key_col,
-                                    source_table=self.source_table)
-        res = list(plpy.execute(dist_key_query))
-        res = [x[dist_key_col] for x in res]
-        return res
 
     def create_mst_schedule_table(self, mst_row):
         mst_temp_query = """
@@ -459,13 +451,3 @@ class FitMultipleModel():
                                                         self.mst_weights_tbl,
                                                         self.mst_current_schedule_tbl,
                                                         self.weights_to_update_tbl))
-
-    def query_weights(self, mst_key):
-        mlp_weights_query = """
-                            SELECT {self.model_weights_col}, {self.mst_key_col}
-                            FROM {self.model_output_table}
-                            WHERE {self.mst_key_col} = {mst_key}
-                            """.format(**locals())
-
-        res = plpy.execute(mlp_weights_query)
-        return res[0][self.model_weights_col]
