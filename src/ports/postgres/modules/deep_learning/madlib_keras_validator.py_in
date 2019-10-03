@@ -424,19 +424,40 @@ class MstLoaderInputValidator():
 
 class FitMultipleInputValidator(FitInputValidator):
     def __init__(self, source_table, validation_table, output_model_table,
-                 model_arch_table, dependent_varname,
-                 independent_varname, num_iterations,
+                 model_selection_table, model_selection_summary_table, dependent_varname,
+                 independent_varname, num_iterations, model_info_table,
                  metrics_compute_frequency, warm_start):
+
+        input_tbl_valid(self.model_selection_table, self.module_name)
+        input_tbl_valid(self.model_selection_summary_table, self.module_name,
+                        error_suffix_str="Please ensure that the model selection table ({0}) "
+                                         "has been created by "
+                                         "load_model_selection_table().".format(self.model_selection_table))
+        self.msts, self.model_arch_table = self.query_model_configs()
+        output_tbl_valid(self.model_info_table, self.module_name)
         super(FitMultipleInputValidator, self).__init__(source_table,
                                                         validation_table,
                                                         output_model_table,
-                                                        model_arch_table,
+                                                        self.model_arch_table,
                                                         None,
                                                         dependent_varname,
                                                         independent_varname,
                                                         num_iterations,
                                                         metrics_compute_frequency,
                                                         warm_start)
+
+    def query_model_configs(self):
+        msts_query = """
+                     SELECT * FROM {self.model_selection_table}
+                     ORDER BY {self.mst_key_col}
+                     """.format(**locals())
+        model_arch_table_query = """
+                                 SELECT {self.model_arch_table_col}
+                                 FROM {self.model_selection_summary_table}
+                                 """.format(**locals())
+        msts = list(plpy.execute(msts_query))
+        model_arch_table = plpy.execute(model_arch_table_query)[0][self.model_arch_table_col]
+        return msts, model_arch_table
 
     def _validate_input_args(self):
         _assert(self.num_iterations > 0,

@@ -83,23 +83,19 @@ class FitMultipleModel():
         self.train_mst_loss = defaultdict(list)
         self.train_mst_metric = defaultdict(list)
         self.info_str = ""
-        input_tbl_valid(self.model_selection_table, self.module_name)
-        input_tbl_valid(self.model_selection_summary_table, self.module_name,
-                        error_suffix_str="Please ensure that the model selection table ({0}) "
-                                         "has been created by "
-                                         "load_model_selection_table().".format(self.model_selection_table))
-        self.msts, self.model_arch_table = self.query_model_configs()
         self.dep_shape_col = add_postfix(mb_dep_var_col, "_shape")
         self.ind_shape_col = add_postfix(mb_indep_var_col, "_shape")
         self.fit_validator_train = FitMultipleInputValidator(
             self.source_table, self.validation_table, self.model_output_table,
-            self.model_arch_table, mb_dep_var_col, mb_indep_var_col,
+            self.model_selection_table, self.model_selection_summary_table,
+            mb_dep_var_col, mb_indep_var_col, self.model_info_table,
             self.num_iterations, 1, False)
+        self.msts = self.fit_validator_train.msts
+        self.model_arch_table = self.fit_validator.model_arch_table
         self.seg_ids_train, self.images_per_seg_train = \
             get_image_count_per_seg_for_minibatched_data_from_db(
                 self.source_table)
 
-        output_tbl_valid(self.model_info_table, self.module_name)
         if self.validation_table:
             self.valid_mst_metric_eval_time = defaultdict(list)
             self.valid_mst_loss = defaultdict(list)
@@ -196,19 +192,6 @@ class FitMultipleModel():
         for index, dist_key in enumerate(self.dist_keys):
             grand_schedule[dist_key] = rotate(msts, index)
         return grand_schedule
-
-    def query_model_configs(self):
-        msts_query = """
-                     SELECT * FROM {self.model_selection_table}
-                     ORDER BY {self.mst_key_col}
-                     """.format(**locals())
-        model_arch_table_query = """
-                                 SELECT {self.model_arch_table_col}
-                                 FROM {self.model_selection_summary_table}
-                                 """.format(**locals())
-        msts = list(plpy.execute(msts_query))
-        model_arch_table = plpy.execute(model_arch_table_query)[0][self.model_arch_table_col]
-        return msts, model_arch_table
 
     def query_dist_keys(self):
         dist_key_query = """
