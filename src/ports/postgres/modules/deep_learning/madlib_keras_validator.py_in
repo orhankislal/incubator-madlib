@@ -455,5 +455,5 @@ class FitMultipleInputValidator(FitInputValidator):
                                                         metrics_compute_frequency,
                                                         warm_start)
     def _validate_input_args(self):
-        super(FitMultipleInputValidator, self)._validate_common_args(self)
+        super(FitMultipleInputValidator, self)._validate_common_args()
 
