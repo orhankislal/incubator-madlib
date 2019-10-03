@@ -429,8 +429,8 @@ class MstLoaderInputValidator():
 class FitMultipleInputValidator(FitInputValidator):
     def __init__(self, source_table, validation_table, output_model_table,
                  model_selection_table, model_selection_summary_table, dependent_varname,
-                 independent_varname, num_iterations, model_info_table,
-                 metrics_compute_frequency, warm_start):
+                 independent_varname, num_iterations, model_info_table, mst_key_col,
+                 model_arch_table_col, metrics_compute_frequency, warm_start):
 
         self.module_name = 'madlib_keras_fit_multiple'
 
@@ -438,8 +438,9 @@ class FitMultipleInputValidator(FitInputValidator):
         input_tbl_valid(model_selection_summary_table, self.module_name,
                         error_suffix_str="Please ensure that the model selection table ({0}) "
                                          "has been created by "
-                                         "load_model_selection_table().".format(self.model_selection_table))
-        self.msts, self.model_arch_table = self.query_model_configs(
+                                         "load_model_selection_table().".format(
+                                            model_selection_table))
+        self.msts, self.model_arch_table = query_model_configs(
             model_selection_table, model_selection_summary_table,
             mst_key_col, model_arch_table_col)
         output_tbl_valid(model_info_table, self.module_name)
