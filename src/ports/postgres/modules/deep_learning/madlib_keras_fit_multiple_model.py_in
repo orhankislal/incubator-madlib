@@ -88,9 +88,9 @@ class FitMultipleModel():
         self.fit_validator_train = FitMultipleInputValidator(
             self.source_table, self.validation_table, self.model_output_table,
             self.model_selection_table, self.model_selection_summary_table,
-            mb_dep_var_col, mb_indep_var_col, self.model_info_table,
-            self.mst_key_col, self.model_arch_table_col,
-            self.num_iterations, 1, False)
+            mb_dep_var_col, mb_indep_var_col, self.num_iterations,
+            self.model_info_table, self.mst_key_col, self.model_arch_table_col,
+            1, False)
         self.msts = self.fit_validator_train.msts
         self.model_arch_table = self.fit_validator.model_arch_table
         self.seg_ids_train, self.images_per_seg_train = \
