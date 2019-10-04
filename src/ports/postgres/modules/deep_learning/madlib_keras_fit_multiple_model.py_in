@@ -92,7 +92,7 @@ class FitMultipleModel():
             self.model_info_table, self.mst_key_col, self.model_arch_table_col,
             1, False)
         self.msts = self.fit_validator_train.msts
-        self.model_arch_table = self.fit_validator.model_arch_table
+        self.model_arch_table = self.fit_validator_train.model_arch_table
         self.seg_ids_train, self.images_per_seg_train = \
             get_image_count_per_seg_for_minibatched_data_from_db(
                 self.source_table)
