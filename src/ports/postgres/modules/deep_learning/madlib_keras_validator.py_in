@@ -236,7 +236,7 @@ class FitCommonValidator(object):
     def __init__(self, source_table, validation_table, output_model_table,
                  model_arch_table, model_arch_id, dependent_varname,
                  independent_varname, num_iterations,
-                 metrics_compute_frequency, warm_start):
+                 metrics_compute_frequency, warm_start, module_name):
         self.source_table = source_table
         self.validation_table = validation_table
         self.output_model_table = output_model_table
@@ -256,6 +256,7 @@ class FitCommonValidator(object):
         if self.output_model_table:
             self.output_summary_model_table = add_postfix(
                 self.output_model_table, "_summary")
+        self.module_name = module_name
         self._validate_common_args()
 
     def _validate_common_args(self):
@@ -366,7 +367,7 @@ class FitInputValidator(FitCommonValidator):
                                                 num_iterations,
                                                 metrics_compute_frequency,
                                                 warm_start,
-                                                module_name)
+                                                self.module_name)
         InputValidator.validate_model_arch_table(self.module_name, self.model_arch_table,
             self.model_arch_id)
 
