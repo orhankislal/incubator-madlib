@@ -399,7 +399,7 @@ class FitMultipleInputValidator(FitCommonValidator):
                                                         num_iterations,
                                                         metrics_compute_frequency,
                                                         warm_start,
-                                                        module_name)
+                                                        self.module_name)
 
 
 
