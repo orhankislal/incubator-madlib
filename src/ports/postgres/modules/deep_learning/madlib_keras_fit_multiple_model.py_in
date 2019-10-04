@@ -107,7 +107,7 @@ class FitMultipleModel():
         self.mst_weights_tbl = unique_string(desp='mst_weights')
         self.mst_current_schedule_tbl = unique_string(desp='mst_current_schedule')
 
-        self.dist_keys = self.query_dist_keys(self.source_table, self.dist_key_col)
+        self.dist_keys = query_dist_keys(self.source_table, self.dist_key_col)
         if len(self.msts) < len(self.dist_keys):
             self.msts_for_schedule = self.msts + [None] * \
                 (len(self.dist_keys) - len(self.msts))
@@ -168,7 +168,7 @@ class FitMultipleModel():
             seg_ids = self.seg_ids_valid
             images_per_seg = self.images_per_seg_valid
         for mst in self.msts:
-            state = self.query_weights(self.model_output_table, self.model_weights_col,
+            state = query_weights(self.model_output_table, self.model_weights_col,
                 self.mst_key_col, mst[self.mst_key_col])
             model_arch, _ = get_model_arch_weights(self.model_arch_table, mst[self.model_id_col])
             serialized_weights = \
