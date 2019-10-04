@@ -232,9 +232,7 @@ class InputValidator:
                 module_name, model_summary_table, cols_to_check_for))
 
 
-
-
-class FitInputValidator(object):
+class FitCommonValidator(object):
     def __init__(self, source_table, validation_table, output_model_table,
                  model_arch_table, model_arch_id, dependent_varname,
                  independent_varname, num_iterations,
@@ -258,13 +256,7 @@ class FitInputValidator(object):
         if self.output_model_table:
             self.output_summary_model_table = add_postfix(
                 self.output_model_table, "_summary")
-        self.module_name = 'madlib_keras_fit'
-        self._validate_input_args()
-
-    def _validate_input_args(self):
         self._validate_common_args()
-        InputValidator.validate_model_arch_table(self.module_name, self.model_arch_table,
-            self.model_arch_id)
 
     def _validate_common_args(self):
         _assert(self.num_iterations > 0,
@@ -357,6 +349,60 @@ class FitInputValidator(object):
                 input_shape, 2)
 
 
+class FitInputValidator(FitCommonValidator):
+    def __init__(self, source_table, validation_table, output_model_table,
+                 model_arch_table, model_arch_id, dependent_varname,
+                 independent_varname, num_iterations,
+                 metrics_compute_frequency, warm_start):
+
+        self.module_name = 'madlib_keras_fit'
+        super(FitInputValidator, self).__init__(source_table,
+                                                validation_table,
+                                                output_model_table,
+                                                model_arch_table,
+                                                model_arch_id,
+                                                dependent_varname,
+                                                independent_varname,
+                                                num_iterations,
+                                                metrics_compute_frequency,
+                                                warm_start,
+                                                module_name)
+        InputValidator.validate_model_arch_table(self.module_name, self.model_arch_table,
+            self.model_arch_id)
+
+class FitMultipleInputValidator(FitCommonValidator):
+    def __init__(self, source_table, validation_table, output_model_table,
+                 model_selection_table, model_selection_summary_table, dependent_varname,
+                 independent_varname, num_iterations, model_info_table, mst_key_col,
+                 model_arch_table_col, metrics_compute_frequency, warm_start):
+
+        self.module_name = 'madlib_keras_fit_multiple'
+
+        input_tbl_valid(model_selection_table, self.module_name)
+        input_tbl_valid(model_selection_summary_table, self.module_name,
+                        error_suffix_str="Please ensure that the model selection table ({0}) "
+                                         "has been created by "
+                                         "load_model_selection_table().".format(
+                                            model_selection_table))
+        self.msts, self.model_arch_table = query_model_configs(
+            model_selection_table, model_selection_summary_table,
+            mst_key_col, model_arch_table_col)
+        output_tbl_valid(model_info_table, self.module_name)
+        super(FitMultipleInputValidator, self).__init__(source_table,
+                                                        validation_table,
+                                                        output_model_table,
+                                                        self.model_arch_table,
+                                                        None,
+                                                        dependent_varname,
+                                                        independent_varname,
+                                                        num_iterations,
+                                                        metrics_compute_frequency,
+                                                        warm_start,
+                                                        module_name)
+
+
+
+
 
 class MstLoaderInputValidator():
     def __init__(self,
@@ -425,35 +471,4 @@ class MstLoaderInputValidator():
         output_tbl_valid(self.model_selection_table, self.module_name)
         output_tbl_valid(self.model_selection_summary_table, self.module_name)
 
-
-class FitMultipleInputValidator(FitInputValidator):
-    def __init__(self, source_table, validation_table, output_model_table,
-                 model_selection_table, model_selection_summary_table, dependent_varname,
-                 independent_varname, num_iterations, model_info_table, mst_key_col,
-                 model_arch_table_col, metrics_compute_frequency, warm_start):
-
-        self.module_name = 'madlib_keras_fit_multiple'
-
-        input_tbl_valid(model_selection_table, self.module_name)
-        input_tbl_valid(model_selection_summary_table, self.module_name,
-                        error_suffix_str="Please ensure that the model selection table ({0}) "
-                                         "has been created by "
-                                         "load_model_selection_table().".format(
-                                            model_selection_table))
-        self.msts, self.model_arch_table = query_model_configs(
-            model_selection_table, model_selection_summary_table,
-            mst_key_col, model_arch_table_col)
-        output_tbl_valid(model_info_table, self.module_name)
-        super(FitMultipleInputValidator, self).__init__(source_table,
-                                                        validation_table,
-                                                        output_model_table,
-                                                        self.model_arch_table,
-                                                        None,
-                                                        dependent_varname,
-                                                        independent_varname,
-                                                        num_iterations,
-                                                        metrics_compute_frequency,
-                                                        warm_start)
-    def _validate_input_args(self):
-        super(FitMultipleInputValidator, self)._validate_common_args()
 
