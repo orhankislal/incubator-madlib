@@ -107,7 +107,7 @@ class FitMultipleModel():
         self.mst_weights_tbl = unique_string(desp='mst_weights')
         self.mst_current_schedule_tbl = unique_string(desp='mst_current_schedule')
 
-        self.dist_keys = query_dist_keys(self.source_table, self.dist_key_col)
+        self.dist_keys = query_dist_keys(self.source_table, dist_key_col)
         if len(self.msts) < len(self.dist_keys):
             self.msts_for_schedule = self.msts + [None] * \
                 (len(self.dist_keys) - len(self.msts))
