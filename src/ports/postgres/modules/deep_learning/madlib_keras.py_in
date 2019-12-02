@@ -478,7 +478,11 @@ def fit_transition(state, dependent_var, independent_var, dependent_var_shape,
     # Fit segment model on data
     #TODO consider not doing this every time
     fit_params = parse_and_validate_fit_params(fit_params)
+
+    fit_time = datetime.datetime.now()
     history = segment_model.fit(x_train, y_train, **fit_params)
+    fit_time = datetime.datetime.now() - fit_time
+    plpy.info("fit_time {0}".format(fit_time))
     image_count = len(x_train)
 
     # Aggregating number of images, loss and accuracy
