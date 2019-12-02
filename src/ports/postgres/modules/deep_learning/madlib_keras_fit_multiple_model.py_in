@@ -431,6 +431,8 @@ class FitMultipleModel():
         # Therefore we want to have queries that do not add motions and all the
         # sub-queries running Keras/tensorflow operations reuse the same slice(process)
         # that was used for initializing GPU memory.
+
+        mst_weights_time = datetime.datetime.now()
         mst_weights_query = """
             CREATE TABLE {self.mst_weights_tbl} AS
                 SELECT mst_tbl.*, wgh_tbl.{self.model_weights_col},
@@ -445,6 +447,8 @@ class FitMultipleModel():
         """.format(dist_key_col=dist_key_col,
                    **locals())
         plpy.execute(mst_weights_query)
+        mst_weights_time = datetime.datetime.now() - mst_weights_time
+        plpy.info("mst_weights_time {0}".format(mst_weights_time))
         uda_query = """
             CREATE TABLE {self.weights_to_update_tbl} AS
             SELECT {self.schema_madlib}.fit_step_multiple_model({mb_dep_var_col},
@@ -475,7 +479,12 @@ class FitMultipleModel():
                        dist_key_col=dist_key_col,
                        self=self
                        )
+
+
+        weights_to_update_time = datetime.datetime.now()
         plpy.execute(uda_query)
+        weights_to_update_time = datetime.datetime.now() - weights_to_update_time
+        plpy.info("weights_to_update_time {0}".format(weights_to_update_time))
 
         update_query = """
             UPDATE {self.model_output_table}
