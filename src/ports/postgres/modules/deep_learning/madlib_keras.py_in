@@ -22,6 +22,7 @@ import os
 import plpy
 import sys
 import time
+import gc
 
 from keras import backend as K
 from keras.layers import *
@@ -510,9 +511,11 @@ def fit_transition(state, dependent_var, independent_var, dependent_var_shape,
             updated_weights = [total_images * w for w in updated_weights]
         if is_final_iteration or is_multiple_model:
             SD_STORE.clear_SD(SD)
-            clear_keras_session(sess)
             del segment_model
+            del history
+            clear_keras_session(sess)
             del sess
+            gc.collect()
 
     new_state = madlib_keras_serializer.serialize_state_with_nd_weights(
         agg_image_count, updated_weights)
