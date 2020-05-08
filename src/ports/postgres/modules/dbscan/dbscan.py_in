@@ -201,7 +201,7 @@ def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, 
                   depth, n_features)
     kd_source_table = 'kd_source_table'
 
-    dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
+    dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
     plpy.execute("DROP TABLE IF EXISTS {0}".format(kd_source_table))
     sql = """
         CREATE TABLE {kd_source_table} AS
