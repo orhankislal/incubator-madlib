@@ -26,12 +26,17 @@ from utilities.utilities import add_postfix
 from utilities.utilities import NUMERIC, ONLY_ARRAY
 from utilities.utilities import is_valid_psql_type
 from utilities.utilities import is_platform_pg
+from utilities.utilities import num_features
 from utilities.validate_args import input_tbl_valid, output_tbl_valid
 from utilities.validate_args import is_var_valid
 from utilities.validate_args import cols_in_tbl_valid
 from utilities.validate_args import get_expr_type
 from utilities.validate_args import get_algorithm_name
 from graph.wcc import wcc
+from knn.knn import build_kd_tree
+
+from math import log
+from math import floor
 
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
@@ -49,6 +54,10 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         _validate_dbscan(schema_madlib, source_table, output_table, id_column,
                          expr_point, eps, min_samples, metric, algorithm)
+
+        if algorithm == KD_TREE:
+            dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
+            return
 
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
         dist_id_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY ({0})'.format(id_column)
@@ -178,6 +187,115 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
                      distance_table, core_points_table, core_edge_table,
                      reachable_points_table))
+
+def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric):
+
+    depth = 3
+
+    n_features = num_features(source_table, expr_point)
+
+    kd_array = build_kd_tree(schema_madlib, source_table, output_table, expr_point,
+                  depth, n_features)
+    plpy.info(kd_array)
+    dist_source_table = 'dist_source_table'
+
+    dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
+    plpy.execute("DROP TABLE IF EXISTS {0}".format(dist_source_table))
+    sql = """
+        CREATE TABLE {dist_source_table} AS
+        SELECT {id_column}, {expr_point},
+            unnest({schema_madlib}.get_leaf_list({expr_point},
+                                          ARRAY{kd_array}::INTEGER[],
+                                          {eps},
+                                          {n_features})) AS __leaf_id__
+        FROM {source_table}
+        {dist_leaf_sql}
+    """.format(**locals())
+    plpy.execute(sql)
+
+
+
+def build_kd_tree(schema_madlib, source_table, output_table, expr_point,
+                  depth, n_features, **kwargs):
+    """
+        KD-tree function to create a partitioning for KNN
+        Args:
+            @param schema_madlib        Name of the Madlib Schema
+            @param source_table         Training data table
+            @param output_table         Name of the table to store kd tree
+            @param expr_point    Name of the column with training data
+                                        or expression that evaluates to a
+                                        numeric array
+            @param depth                Depth of the kd tree
+    """
+    with MinWarning("error"):
+
+        n_features = num_features(source_table, expr_point)
+
+        clauses = [' 1=1 ']
+        clause_counter = 0
+        kd_array = []
+        for curr_level in range(depth):
+            curr_feature = (curr_level % n_features) + 1
+            for curr_leaf in range(pow(2,curr_level)):
+                clause = clauses[clause_counter]
+                cutoff_sql = """
+                    SELECT percentile_disc(0.5)
+                           WITHIN GROUP (
+                            ORDER BY ({expr_point})[{curr_feature}]
+                           ) AS cutoff
+                    FROM {source_table}
+                    WHERE {clause}
+                    """.format(**locals())
+
+                cutoff = plpy.execute(cutoff_sql)[0]['cutoff']
+                cutoff = "NULL" if cutoff is None else cutoff
+                plpy.info(cutoff)
+                kd_array.append(cutoff)
+                clause_counter += 1
+                clauses.append(clause +
+                               "AND ({expr_point})[{curr_feature}] < {cutoff} ".
+                               format(**locals()))
+                clauses.append(clause +
+                               "AND ({expr_point})[{curr_feature}] >= {cutoff} ".
+                               format(**locals()))
+
+        return kd_array
+
+def get_leaf_list(schema_madlib, expr_point, kd_array, eps, n_features, **kwargs):
+
+    """
+    kd-tree is represented as an array or boundary values.
+    Array index -> tree node mapping:
+          0
+      +---^---+
+      1       2
+    +-^-+   +-^-+
+    3   4   5   6
+    In this case index i will have the following children: 2i+1 and 2i+2
+
+    """
+
+    node_q = [0]
+    section_list = []
+
+    while node_q:
+        current_node = node_q.pop()
+
+        if current_node > len(kd_array)-1:
+            section_list.append(current_node)
+        else:
+            curr_feature = int(floor(log(current_node+1,2))%n_features)
+            comp_value = expr_point[curr_feature]
+
+            if comp_value <= kd_array[current_node]+eps:
+                node_q.append(2*current_node+1)
+
+            if comp_value >= kd_array[current_node]-eps:
+                node_q.append(2*current_node+2)
+
+    return section_list
+
 
 
 def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):

@@ -311,3 +311,15 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_predict(
     PythonFunction(dbscan, dbscan, dbscan_predict_help)
 $$ LANGUAGE plpythonu VOLATILE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.get_leaf_list(
+    expr_point                  DOUBLE PRECISION[],
+    kd_array                    INTEGER[],
+    eps                         DOUBLE PRECISION,
+    n_features                  INTEGER
+) RETURNS INTEGER[] AS $$
+    PythonFunction(dbscan, dbscan, get_leaf_list)
+$$ LANGUAGE plpythonu VOLATILE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+
+
