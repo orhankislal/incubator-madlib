@@ -41,23 +41,26 @@ from math import floor
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
 
-def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, **kwargs):
+def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth, **kwargs):
 
     with MinWarning("warning"):
 
         min_samples = 5 if not min_samples else min_samples
         metric = 'squared_dist_norm2' if not metric else metric
         algorithm = 'brute' if not algorithm else algorithm
+        depth = 3 if not depth else depth
+        kd_join_clause = ''
 
         algorithm = get_algorithm_name(algorithm, BRUTE_FORCE,
             [BRUTE_FORCE, KD_TREE], 'DBSCAN')
 
         _validate_dbscan(schema_madlib, source_table, output_table, id_column,
-                         expr_point, eps, min_samples, metric, algorithm)
+                         expr_point, eps, min_samples, metric, algorithm, depth)
 
         if algorithm == KD_TREE:
-            dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
-            return
+            source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
+            kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
+
 
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
         dist_id_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY ({0})'.format(id_column)
@@ -74,8 +77,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                         __t2__.{id_column} AS __dest__,
                         {schema_madlib}.{metric}(
                             __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
-                FROM {source_table} AS __t1__, {source_table} AS __t2__
-                WHERE __t1__.{id_column} != __t2__.{id_column}) q1
+                FROM {source_table} AS __t1__ INNER JOIN {source_table} AS __t2__
+                ON(__t1__.{id_column} != __t2__.{id_column} {kd_join_clause}))q1
             WHERE __dist__ < {eps}
             {dist_src_sql}
             """.format(**locals())
@@ -196,13 +199,12 @@ def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, 
 
     kd_array = build_kd_tree(schema_madlib, source_table, output_table, expr_point,
                   depth, n_features)
-    plpy.info(kd_array)
-    dist_source_table = 'dist_source_table'
+    kd_source_table = 'kd_source_table'
 
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
-    plpy.execute("DROP TABLE IF EXISTS {0}".format(dist_source_table))
+    plpy.execute("DROP TABLE IF EXISTS {0}".format(kd_source_table))
     sql = """
-        CREATE TABLE {dist_source_table} AS
+        CREATE TABLE {kd_source_table} AS
         SELECT {id_column}, {expr_point},
             unnest({schema_madlib}.get_leaf_list({expr_point},
                                           ARRAY{kd_array}::INTEGER[],
@@ -212,6 +214,8 @@ def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, 
         {dist_leaf_sql}
     """.format(**locals())
     plpy.execute(sql)
+
+    return kd_source_table
 
 
 
@@ -250,7 +254,6 @@ def build_kd_tree(schema_madlib, source_table, output_table, expr_point,
 
                 cutoff = plpy.execute(cutoff_sql)[0]['cutoff']
                 cutoff = "NULL" if cutoff is None else cutoff
-                plpy.info(cutoff)
                 kd_array.append(cutoff)
                 clause_counter += 1
                 clauses.append(clause +
@@ -321,7 +324,7 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
         else:
             return None
 
-def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm):
+def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth):
 
     input_tbl_valid(source_table, 'dbscan')
     output_tbl_valid(output_table, 'dbscan')
@@ -345,6 +348,8 @@ def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_
 
     fn_dist_list = ['dist_norm1', 'dist_norm2', 'squared_dist_norm2', 'dist_angle', 'dist_tanimoto']
     _assert(metric in fn_dist_list, "dbscan Error: metric has to be one of the madlib defined distance functions")
+
+    _assert(depth > 0, "dbscan Error: depth has to be a positive number")
 
 
 def dbscan_help(schema_madlib, message=None, **kwargs):

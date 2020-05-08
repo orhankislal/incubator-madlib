@@ -235,7 +235,8 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
     eps                         DOUBLE PRECISION,
     min_samples                 INTEGER,
     metric                      VARCHAR,
-    algorithm                   VARCHAR
+    algorithm                   VARCHAR,
+    depth                       INTEGER
 ) RETURNS VOID AS $$
     PythonFunction(dbscan, dbscan, dbscan)
 $$ LANGUAGE plpythonu VOLATILE
@@ -248,9 +249,23 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
     expr_point                  VARCHAR,
     eps                         DOUBLE PRECISION,
     min_samples                 INTEGER,
+    metric                      VARCHAR,
+    algorithm                   VARCHAR
+) RETURNS VOID AS $$
+    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, $6, $7, $8, NULL);
+$$ LANGUAGE sql VOLATILE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
+    source_table                VARCHAR,
+    output_table                VARCHAR,
+    id_column                   VARCHAR,
+    expr_point                  VARCHAR,
+    eps                         DOUBLE PRECISION,
+    min_samples                 INTEGER,
     metric                      VARCHAR
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, $6, $7, NULL);
+    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, $6, $7, NULL, NULL);
 $$ LANGUAGE sql VOLATILE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 
@@ -262,7 +277,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
     eps                         DOUBLE PRECISION,
     min_samples                 INTEGER
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, $6, NULL, NULL);
+    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, $6, NULL, NULL, NULL);
 $$ LANGUAGE sql VOLATILE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 
@@ -273,7 +288,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan(
     expr_point                  VARCHAR,
     eps                         DOUBLE PRECISION
 ) RETURNS VOID AS $$
-    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, NULL, NULL, NULL);
+    SELECT MADLIB_SCHEMA.dbscan($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL);
 $$ LANGUAGE sql VOLATILE
 m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 
