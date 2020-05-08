@@ -101,7 +101,7 @@ SELECT dbscan(
  1.75,                  -- epsilon
  4,                     -- min samples
 'dist_norm2',           -- metric
-'kd-tree',              -- algorithm
+'kd_tree',              -- algorithm
 2);                     -- depth
 
 SELECT * FROM dbscan_result ORDER BY pid;
