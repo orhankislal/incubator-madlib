@@ -89,3 +89,19 @@ SELECT dbscan(
 SELECT * FROM dbscan_result ORDER BY pid;
 
 SELECT assert(count(DISTINCT cluster_id) = 3, 'Incorrect cluster count') FROM dbscan_result;
+
+-- Test kd-tree
+
+DROP TABLE IF EXISTS dbscan_result, dbscan_result_summary;
+SELECT dbscan(
+'dbscan_train_data2',   -- source table
+'dbscan_result',        -- output table
+'pid',                  -- point id column
+'points',               -- data point
+ 1.75,                  -- epsilon
+ 4,                     -- min samples
+'dist_norm2',           -- metric
+'kd-tree',              -- algorithm
+2);                     -- depth
+
+SELECT * FROM dbscan_result ORDER BY pid;
