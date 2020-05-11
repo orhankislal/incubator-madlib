@@ -161,7 +161,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         sql = """
             UPDATE {output_table} AS __t1__
             SET __points__ = {expr_point}
-            FROM {cur_source_table} AS __t2__
+            FROM {source_table} AS __t2__
             WHERE __t1__.{id_column} = __t2__.{id_column}
         """.format(**locals())
         plpy.execute(sql)
