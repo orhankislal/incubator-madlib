@@ -49,7 +49,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         metric = 'squared_dist_norm2' if not metric else metric
         algorithm = 'brute' if not algorithm else algorithm
         depth = 3 if not depth else depth
-        kd_join_clause = ''
 
         algorithm = get_algorithm_name(algorithm, BRUTE_FORCE,
             [BRUTE_FORCE, KD_TREE], 'DBSCAN')
@@ -58,8 +57,11 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                          expr_point, eps, min_samples, metric, algorithm, depth)
 
         if algorithm == KD_TREE:
-            source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
+            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
+        else:
+            cur_source_table = source_table
+            kd_join_clause = ''
 
 
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
@@ -77,7 +79,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                         __t2__.{id_column} AS __dest__,
                         {schema_madlib}.{metric}(
                             __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
-                FROM {source_table} AS __t1__ INNER JOIN {source_table} AS __t2__
+                FROM {cur_source_table} AS __t1__ INNER JOIN {cur_source_table} AS __t2__
                 ON(__t1__.{id_column} != __t2__.{id_column} {kd_join_clause}))q1
             WHERE __dist__ < {eps}
             {dist_src_sql}
@@ -159,7 +161,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         sql = """
             UPDATE {output_table} AS __t1__
             SET __points__ = {expr_point}
-            FROM {source_table} AS __t2__
+            FROM {cur_source_table} AS __t2__
             WHERE __t1__.{id_column} = __t2__.{id_column}
         """.format(**locals())
         plpy.execute(sql)
