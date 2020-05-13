@@ -90,7 +90,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t5 = datetime.now()
-        plpy.info("dist table {0}".format(t4-t5))
+        plpy.info("dist table {0}".format(t5-t4))
         # Find core points
         # We use __count__ + 1 because we have to add the point itself to the count
         core_points_table = unique_string(desp='core_points_table')
@@ -105,7 +105,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t6 = datetime.now()
-        plpy.info("core points table {0}".format(t5-t6))
+        plpy.info("core points table {0}".format(t6-t5))
         # Find the connections between core points to form the clusters
         core_edge_table = unique_string(desp='core_edge_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
@@ -120,13 +120,13 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t7 = datetime.now()
-        plpy.info("core edge {0}".format(t6-t7))
+        plpy.info("core edge {0}".format(t7-t6))
         # Run wcc to get the min id for each cluster
         wcc(schema_madlib, core_points_table, id_column, core_edge_table, 'src=__src__, dest=__dest__',
             output_table, None)
 
         t8 = datetime.now()
-        plpy.info("wcc {0}".format(t7-t8))
+        plpy.info("wcc {0}".format(t8-t7))
 
         plpy.execute("""
             ALTER TABLE {0}
@@ -143,7 +143,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         """.format(output_table))
 
         t9 = datetime.now()
-        plpy.info("alter tables {0}".format(t8-t9))
+        plpy.info("alter tables {0}".format(t9-t8))
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(reachable_points_table))
@@ -161,7 +161,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t10 = datetime.now()
-        plpy.info("reach table {0}".format(t9-t10))
+        plpy.info("reach table {0}".format(t10-t9))
         sql = """
             INSERT INTO {output_table}
             SELECT  __reachable_id__ as {id_column},
@@ -175,7 +175,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t11 = datetime.now()
-        plpy.info("output table {0}".format(t10-t11))
+        plpy.info("output table {0}".format(t11-t10))
         # Add features of points to the output table to use them for prediction
         sql = """
             UPDATE {output_table} AS __t1__
@@ -186,7 +186,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t12 = datetime.now()
-        plpy.info("output table up1 {0}".format(t11-t12))
+        plpy.info("output table up1 {0}".format(t12-t11))
         # Update the cluster ids to be consecutive
         sql = """
             UPDATE {output_table} AS __t1__
@@ -200,7 +200,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute(sql)
 
         t13 = datetime.now()
-        plpy.info("output table up2{0}".format(t12-t13))
+        plpy.info("output table up2{0}".format(t13-t12))
 
         output_summary_table = add_postfix(output_table, '_summary')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(output_summary_table))
