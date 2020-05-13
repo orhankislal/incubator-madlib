@@ -38,6 +38,8 @@ from knn.knn import build_kd_tree
 from math import log
 from math import floor
 
+from datetime import datetime
+
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
 
@@ -57,7 +59,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                          expr_point, eps, min_samples, metric, algorithm, depth)
 
         if algorithm == KD_TREE:
-            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric)
+            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth)
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
         else:
             cur_source_table = source_table
@@ -193,9 +195,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                      distance_table, core_points_table, core_edge_table,
                      reachable_points_table))
 
-def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric):
-
-    depth = 3
+def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth):
 
     n_features = num_features(source_table, expr_point)
 
