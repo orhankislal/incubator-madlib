@@ -83,7 +83,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                         {schema_madlib}.{metric}(
                             __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
                 FROM {cur_source_table} AS __t1__ INNER JOIN {cur_source_table} AS __t2__
-                ON(__t1__.{id_column} != __t2__.{id_column} {kd_join_clause}))q1
+                ON(__t1__.{id_column} < __t2__.{id_column} {kd_join_clause}))q1
             WHERE __dist__ < {eps}
             {dist_src_sql}
             """.format(**locals())
@@ -213,9 +213,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
         plpy.execute(sql)
 
-        plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
-                     distance_table, core_points_table, core_edge_table,
-                     reachable_points_table))
+        # plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
+        #              distance_table, core_points_table, core_edge_table,
+        #              reachable_points_table))
 
 def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth):
 
