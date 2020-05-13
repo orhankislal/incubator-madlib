@@ -65,6 +65,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             cur_source_table = source_table
             kd_join_clause = ''
 
+        t4 = datetime.now()
 
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
         dist_id_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY ({0})'.format(id_column)
@@ -88,6 +89,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
         plpy.execute(sql)
 
+        t5 = datetime.now()
+        plpy.info("dist table {0}".format(t4-t5))
         # Find core points
         # We use __count__ + 1 because we have to add the point itself to the count
         core_points_table = unique_string(desp='core_points_table')
@@ -101,6 +104,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
         plpy.execute(sql)
 
+        t6 = datetime.now()
+        plpy.info("core points table {0}".format(t5-t6))
         # Find the connections between core points to form the clusters
         core_edge_table = unique_string(desp='core_edge_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
@@ -114,9 +119,15 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         """.format(**locals())
         plpy.execute(sql)
 
+        t7 = datetime.now()
+        plpy.info("core edge {0}".format(t6-t7))
         # Run wcc to get the min id for each cluster
         wcc(schema_madlib, core_points_table, id_column, core_edge_table, 'src=__src__, dest=__dest__',
             output_table, None)
+
+        t8 = datetime.now()
+        plpy.info("wcc {0}".format(t7-t8))
+
         plpy.execute("""
             ALTER TABLE {0}
             ADD COLUMN is_core_point BOOLEAN,
@@ -131,6 +142,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             SET is_core_point = TRUE
         """.format(output_table))
 
+        t9 = datetime.now()
+        plpy.info("alter tables {0}".format(t8-t9))
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(reachable_points_table))
@@ -147,6 +160,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
         plpy.execute(sql)
 
+        t10 = datetime.now()
+        plpy.info("reach table {0}".format(t9-t10))
         sql = """
             INSERT INTO {output_table}
             SELECT  __reachable_id__ as {id_column},
@@ -159,6 +174,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
         plpy.execute(sql)
 
+        t11 = datetime.now()
+        plpy.info("output table {0}".format(t10-t11))
         # Add features of points to the output table to use them for prediction
         sql = """
             UPDATE {output_table} AS __t1__
@@ -168,6 +185,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         """.format(**locals())
         plpy.execute(sql)
 
+        t12 = datetime.now()
+        plpy.info("output table up1 {0}".format(t11-t12))
         # Update the cluster ids to be consecutive
         sql = """
             UPDATE {output_table} AS __t1__
@@ -179,6 +198,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             WHERE __t1__.cluster_id = __t2__.cluster_id
         """.format(**locals())
         plpy.execute(sql)
+
+        t13 = datetime.now()
+        plpy.info("output table up2{0}".format(t12-t13))
 
         output_summary_table = add_postfix(output_table, '_summary')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(output_summary_table))
@@ -197,12 +219,15 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
 def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth):
 
+    t1 = datetime.now()
     n_features = num_features(source_table, expr_point)
 
     kd_array = build_kd_tree(schema_madlib, source_table, output_table, expr_point,
                   depth, n_features)
     kd_source_table = 'kd_source_table'
 
+    t2 = datetime.now()
+    plpy.info("build kd tree {0}".format(t2-t1))
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
     plpy.execute("DROP TABLE IF EXISTS {0}".format(kd_source_table))
     sql = """
@@ -217,6 +242,8 @@ def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, 
     """.format(**locals())
     plpy.execute(sql)
 
+    t3 = datetime.now()
+    plpy.info("kd source table {0}".format(t3-t2))
     return kd_source_table
 
 
