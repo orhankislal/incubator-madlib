@@ -37,6 +37,7 @@ from knn.knn import build_kd_tree
 
 from math import log
 from math import floor
+from math import sqrt
 
 from datetime import datetime
 
@@ -352,6 +353,43 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
             return result['cluster_id']
         else:
             return None
+
+def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, **kwargs):
+
+    SD = kwargs['SD']
+    if not state:
+        data = {}
+        SD['counter'] = 0
+    else:
+        data = SD['data']
+
+    data[id_in] = expr_points
+    SD['counter'] = SD['counter']+1
+
+    if SD['counter'] == n_rows:
+        plpy.info(data)
+
+        edges = []
+        for key1, value1 in data.items():
+            for key2, value2 in data.items():
+                if key1 < key2:
+                distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
+                if distance <= eps:
+                    edges.append((key1,key2))
+        plpy.info(edges)
+    SD['data'] = data
+
+    return 1
+
+
+
+def dbscan_merge(state1, state2, **kwargs):
+
+    return state1
+
+def dbscan_final(state, **kwargs):
+
+    return state
 
 def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth):
 
