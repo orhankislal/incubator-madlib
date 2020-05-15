@@ -369,17 +369,59 @@ def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_row
     if SD['counter'] == n_rows:
         plpy.info(data)
 
-        edges = []
+        cl_ids = {}
+        clid_counter = 1
+        cl_counts = {}
         for key1, value1 in data.items():
             for key2, value2 in data.items():
+                plpy.info("{0} {1}".format(key1, key2))
                 if key1 < key2:
-                distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
-                if distance <= eps:
-                    edges.append((key1,key2))
-        plpy.info(edges)
+                    distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
+                    if distance <= eps:
+
+                        cl_id_k1 = cl_ids[key1] if key1 in cl_ids else None
+                        cl_id_k2 = cl_ids[key2] if key2 in cl_ids else None
+
+                        if not cl_id_k1 and not cl_id_k2:
+                            cl_ids[key1] = clid_counter
+                            cl_ids[key2] = clid_counter
+                            cl_counts[clid_counter] = 2
+                            clid_counter += 1
+                        elif cl_id_k1 and not cl_id_k2:
+                            cl_ids[key2] = cl_id_k1
+                            cl_counts[cl_ids[key1]] += 1
+                        elif not cl_id_k1 and cl_id_k2:
+                            cl_ids[key1] = cl_id_k2
+                            cl_counts[cl_ids[key2]] += 1
+                        else:
+                            if cl_counts[cl_id_k1] > cl_counts[cl_id_k2]:
+                                for chkey,chvalue in cl_ids.items():
+                                    if chvalue == cl_id_k2:
+                                        cl_ids[chkey] = cl_id_k1
+                                cl_counts[cl_id_k1] += cl_counts[cl_id_k2]
+                                cl_counts[cl_id_k2] = 0
+                            else:
+                                for chkey,chvalue in cl_ids.items():
+                                    if chvalue == cl_id_k1:
+                                        cl_ids[chkey] = cl_id_k2
+                                cl_counts[cl_id_k2] += cl_counts[cl_id_k1]
+                                cl_counts[cl_id_k1] = 0
+
+                plpy.info(cl_ids)
+
+        plpy.info(cl_counts)
+        for key1, value1 in cl_ids.items():
+            if cl_counts[value1] < min_samples:
+                cl_ids.pop(key1)
+
+        plpy.info(cl_ids)
+        ret = [cl_ids.keys()]
+        ret.append(cl_ids.values())
+        plpy.info(ret)
+        return ret
     SD['data'] = data
 
-    return 1
+    return [1]
 
 
 

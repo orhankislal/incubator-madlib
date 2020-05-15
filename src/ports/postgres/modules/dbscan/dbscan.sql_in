@@ -340,7 +340,7 @@ m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
 
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_transition(
-    state                       BYTEA,
+    state                       INTEGER[],
     id_in                       INTEGER,
     expr_points                 DOUBLE PRECISION[],
     eps                         DOUBLE PRECISION,
@@ -348,24 +348,24 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_transition(
     metric                      VARCHAR,
     n_rows                      INTEGER
 
-) RETURNS BYTEA AS $$
+) RETURNS INTEGER[] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_transition(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_merge(
-    state1          BYTEA,
-    state2          BYTEA
-) RETURNS BYTEA AS $$
+    state1          INTEGER[],
+    state2          INTEGER[]
+) RETURNS INTEGER[] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_merge(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_final(
-    state BYTEA
-) RETURNS BYTEA AS $$
+    state INTEGER[]
+) RETURNS INTEGER[] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_final(**globals())
 $$ LANGUAGE plpythonu
@@ -386,7 +386,7 @@ CREATE AGGREGATE MADLIB_SCHEMA.dbscan_step(
     VARCHAR,
     INTEGER
 )(
-    STYPE=BYTEA,
+    STYPE=INTEGER[],
     SFUNC=MADLIB_SCHEMA.dbscan_transition,
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.dbscan_merge,')
     FINALFUNC=MADLIB_SCHEMA.dbscan_final
