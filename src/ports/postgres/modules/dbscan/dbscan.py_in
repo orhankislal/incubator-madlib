@@ -354,7 +354,7 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
         else:
             return None
 
-def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, **kwargs):
+def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
 
     SD = kwargs['SD']
     if not state:
@@ -365,22 +365,29 @@ def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_row
 
     data[id_in] = expr_points
     SD['counter'] = SD['counter']+1
+    ret = [[999],[999]]
 
-    if SD['counter'] == n_rows:
-        plpy.info(data)
+    my_n_rows = n_rows[leaf_id]
+
+    if SD['counter'] == my_n_rows:
+        # plpy.info(data)
 
         cl_ids = {}
         clid_counter = 1
         cl_counts = {}
+        eps_counts = {}
         for key1, value1 in data.items():
             for key2, value2 in data.items():
-                plpy.info("{0} {1}".format(key1, key2))
+                # plpy.info("{0} {1}".format(key1, key2))
                 if key1 < key2:
                     distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
                     if distance <= eps:
 
                         cl_id_k1 = cl_ids[key1] if key1 in cl_ids else None
                         cl_id_k2 = cl_ids[key2] if key2 in cl_ids else None
+
+                        eps_counts[key1] = 2 if key1 not in eps_counts else eps_counts[key1]+1
+                        eps_counts[key2] = 2 if key2 not in eps_counts else eps_counts[key2]+1
 
                         if not cl_id_k1 and not cl_id_k2:
                             cl_ids[key1] = clid_counter
@@ -394,34 +401,37 @@ def dbscan_transition(state, id_in, expr_points, eps, min_samples, metric, n_row
                             cl_ids[key1] = cl_id_k2
                             cl_counts[cl_ids[key2]] += 1
                         else:
-                            if cl_counts[cl_id_k1] > cl_counts[cl_id_k2]:
-                                for chkey,chvalue in cl_ids.items():
-                                    if chvalue == cl_id_k2:
-                                        cl_ids[chkey] = cl_id_k1
-                                cl_counts[cl_id_k1] += cl_counts[cl_id_k2]
-                                cl_counts[cl_id_k2] = 0
-                            else:
-                                for chkey,chvalue in cl_ids.items():
-                                    if chvalue == cl_id_k1:
-                                        cl_ids[chkey] = cl_id_k2
-                                cl_counts[cl_id_k2] += cl_counts[cl_id_k1]
-                                cl_counts[cl_id_k1] = 0
+                            if cl_id_k1 != cl_id_k2:
+                                if cl_counts[cl_id_k1] > cl_counts[cl_id_k2]:
+                                    for chkey,chvalue in cl_ids.items():
+                                        if chvalue == cl_id_k2:
+                                            cl_ids[chkey] = cl_id_k1
+                                    cl_counts[cl_id_k1] += cl_counts[cl_id_k2]
+                                    cl_counts[cl_id_k2] = 0
+                                else:
+                                    for chkey,chvalue in cl_ids.items():
+                                        if chvalue == cl_id_k1:
+                                            cl_ids[chkey] = cl_id_k2
+                                    cl_counts[cl_id_k2] += cl_counts[cl_id_k1]
+                                    cl_counts[cl_id_k1] = 0
 
-                plpy.info(cl_ids)
+                # plpy.info("cl ids {0}".format(cl_ids))
+                # plpy.info("eps_counts {0}".format(eps_counts))
 
-        plpy.info(cl_counts)
-        for key1, value1 in cl_ids.items():
-            if cl_counts[value1] < min_samples:
-                cl_ids.pop(key1)
+        # plpy.info(eps_counts)
+        if eps_counts:
+            for key1, value1 in eps_counts.items():
+                if value1 < min_samples:
+                    cl_ids.pop(key1)
 
-        plpy.info(cl_ids)
-        ret = [cl_ids.keys()]
-        ret.append(cl_ids.values())
-        plpy.info(ret)
-        return ret
+            # plpy.info("cl ids {0}".format(cl_ids))
+            ret = [cl_ids.keys()]
+            ret.append(cl_ids.values())
+            # plpy.info(ret)
+
     SD['data'] = data
 
-    return [1]
+    return ret
 
 
 
@@ -431,6 +441,7 @@ def dbscan_merge(state1, state2, **kwargs):
 
 def dbscan_final(state, **kwargs):
 
+    plpy.info(state)
     return state
 
 def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth):

@@ -346,26 +346,27 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_transition(
     eps                         DOUBLE PRECISION,
     min_samples                 INTEGER,
     metric                      VARCHAR,
-    n_rows                      INTEGER
+    n_rows                      INTEGER[],
+    leaf_id                     INTEGER
 
-) RETURNS INTEGER[] AS $$
+) RETURNS INTEGER[][] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_transition(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_merge(
-    state1          INTEGER[],
-    state2          INTEGER[]
-) RETURNS INTEGER[] AS $$
+    state1          INTEGER[][],
+    state2          INTEGER[][]
+) RETURNS INTEGER[][] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_merge(**globals())
 $$ LANGUAGE plpythonu
 m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
 
 CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.dbscan_final(
-    state INTEGER[]
-) RETURNS INTEGER[] AS $$
+    state INTEGER[][]
+) RETURNS INTEGER[][] AS $$
 PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
     return dbscan.dbscan_final(**globals())
 $$ LANGUAGE plpythonu
@@ -377,6 +378,7 @@ DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.dbscan_step(
     DOUBLE PRECISION,
     INTEGER,
     VARCHAR,
+    INTEGER[],
     INTEGER);
 CREATE AGGREGATE MADLIB_SCHEMA.dbscan_step(
     INTEGER,
@@ -384,9 +386,10 @@ CREATE AGGREGATE MADLIB_SCHEMA.dbscan_step(
     DOUBLE PRECISION,
     INTEGER,
     VARCHAR,
+    INTEGER[],
     INTEGER
 )(
-    STYPE=INTEGER[],
+    STYPE=INTEGER[][],
     SFUNC=MADLIB_SCHEMA.dbscan_transition,
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.dbscan_merge,')
     FINALFUNC=MADLIB_SCHEMA.dbscan_final
