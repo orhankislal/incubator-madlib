@@ -441,7 +441,6 @@ def dbscan_merge(state1, state2, **kwargs):
 
 def dbscan_final(state, **kwargs):
 
-    plpy.info(state)
     return state
 
 def _validate_dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth):
