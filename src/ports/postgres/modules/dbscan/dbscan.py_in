@@ -33,7 +33,6 @@ from utilities.validate_args import cols_in_tbl_valid
 from utilities.validate_args import get_expr_type
 from utilities.validate_args import get_algorithm_name
 from graph.wcc import wcc
-from knn.knn import build_kd_tree
 
 from math import log
 from math import floor
@@ -135,6 +134,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             # plpy.info(counts_list)
             seg_id = 0
             group_by_clause = ''
+            dist_clause = ''
 
         else:
             sql = """
@@ -149,24 +149,40 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 counts_list.append(counts_dict[i])
             seg_id = 'gp_segment_id'
             group_by_clause = 'GROUP BY gp_segment_id'
+            dist_clause = 'DISTRIBUTED BY (seg_id)'
+
+
+        dbscan_step_table = unique_string(desp='dbscan_step_table')
+        dbscan_step_table = 'dbscan_step_table'
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(dbscan_step_table))
+        sql = """
+            CREATE TABLE {dbscan_step_table} AS
+            SELECT {seg_id}::INTEGER AS seg_id,
+                   {schema_madlib}.dbscan_step( __src__,
+                                                __dest__,
+                                                ARRAY{counts_list},
+                                                {seg_id}
+                                               )
+            FROM {core_edge_table} {group_by_clause}
+            {dist_clause}
+        """.format(**locals())
+        plpy.execute(sql)
 
 
         sf_edge_table = unique_string(desp='sf_edge_table')
         sf_edge_table = 'sf_edge_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(sf_edge_table))
+
         sql = """
             CREATE TABLE {sf_edge_table} AS
             SELECT unnest_result[1] AS __src__, unnest_result[2] AS __dest__
             FROM (
                 SELECT {seg_id}::INTEGER AS seg_id,
-                       ({schema_madlib}.array_unnest_2d_to_1d(
-                            {schema_madlib}.dbscan_step( __src__,
-                                                         __dest__,
-                                                         ARRAY{counts_list},
-                                                         {seg_id}
-                                                        ))).unnest_result
+                       ({schema_madlib}.array_unnest_2d_to_1d(dbscan_step)
+                       ).unnest_result
                 FROM {core_edge_table} {group_by_clause}
                 ) q1
+            {dist_clause}
         """.format(**locals())
         plpy.execute(sql)
 
@@ -568,7 +584,10 @@ def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
 
 def dbscan_merge(state1, state2, **kwargs):
 
-    return state1
+    if state1:
+        return state1
+    else:
+        return state2
 
 def dbscan_final(state, **kwargs):
 
