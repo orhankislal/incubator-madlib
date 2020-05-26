@@ -175,12 +175,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         sql = """
             CREATE TABLE {sf_edge_table} AS
-            SELECT unnest_result[1] AS __src__, unnest_result[2] AS __dest__
+            SELECT seg_id, unnest_result[1] AS __src__, unnest_result[2] AS __dest__
             FROM (
-                SELECT {seg_id}::INTEGER AS seg_id,
+                SELECT seg_id,
                        ({schema_madlib}.array_unnest_2d_to_1d(dbscan_step)
                        ).unnest_result
-                FROM {core_edge_table} {group_by_clause}
+                FROM {dbscan_step_table}
                 ) q1
             {dist_clause}
         """.format(**locals())
