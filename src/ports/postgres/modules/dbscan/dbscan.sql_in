@@ -383,3 +383,60 @@ CREATE AGGREGATE MADLIB_SCHEMA.dbscan_step(
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.dbscan_merge,')
     FINALFUNC=MADLIB_SCHEMA.dbscan_final
 );
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.rtree_transition(
+    state                       INTEGER[],
+    id_in                         INTEGER,
+    expr_points DOUBLE PRECISION[],
+    eps     DOUBLE PRECISION,
+    min_samples INTEGER,
+    metric  VARCHAR,
+    n_rows  INTEGER[],
+    leaf_id     INTEGER
+
+) RETURNS INTEGER[][] AS $$
+PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
+    return dbscan.rtree_transition(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.rtree_merge(
+    state1          INTEGER[][],
+    state2          INTEGER[][]
+) RETURNS INTEGER[][] AS $$
+PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
+    return dbscan.rtree_merge(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.rtree_final(
+    state INTEGER[][]
+) RETURNS INTEGER[] AS $$
+PythonFunctionBodyOnlyNoSchema(`dbscan', `dbscan')
+    return dbscan.rtree_final(**globals())
+$$ LANGUAGE plpythonu
+m4_ifdef(`__HAS_FUNCTION_PROPERTIES__', `NO SQL', `');
+
+--id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id,
+DROP AGGREGATE IF EXISTS MADLIB_SCHEMA.rtree_step(
+    INTEGER,
+    DOUBLE PRECISION[],
+    DOUBLE PRECISION,
+    INTEGER,
+    VARCHAR,
+    INTEGER[],
+    INTEGER);
+CREATE AGGREGATE MADLIB_SCHEMA.rtree_step(
+    INTEGER,
+    DOUBLE PRECISION[],
+    DOUBLE PRECISION,
+    INTEGER,
+    VARCHAR,
+    INTEGER[],
+    INTEGER
+)(
+    STYPE=INTEGER[][],
+    SFUNC=MADLIB_SCHEMA.rtree_transition,
+    m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.rtree_merge,')
+    FINALFUNC=MADLIB_SCHEMA.rtree_final
+);

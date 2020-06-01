@@ -39,6 +39,8 @@ from math import floor
 from math import sqrt
 
 from datetime import datetime
+from rtree import index
+from rtree.index import Rtree
 
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
@@ -58,72 +60,143 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         _validate_dbscan(schema_madlib, source_table, output_table, id_column,
                          expr_point, eps, min_samples, metric, algorithm, depth)
 
-        if algorithm == KD_TREE:
-            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth)
-            kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
-        else:
-            cur_source_table = source_table
-            kd_join_clause = ''
 
-        t4 = datetime.now()
+
 
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
         dist_id_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY ({0})'.format(id_column)
         dist_reach_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__reachable_id__)'
+        dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
 
-        # Calculate pairwise distances
-        distance_table = unique_string(desp='distance_table')
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
-
-        sql = """
-            CREATE TABLE {distance_table} AS
-            SELECT __src__, __dest__ FROM (
-                SELECT  __t1__.{id_column} AS __src__,
-                        __t2__.{id_column} AS __dest__,
-                        {schema_madlib}.{metric}(
-                            __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
-                FROM {cur_source_table} AS __t1__ INNER JOIN {cur_source_table} AS __t2__
-                ON(__t1__.{id_column} < __t2__.{id_column} {kd_join_clause}))q1
-            WHERE __dist__ < {eps}
-            {dist_src_sql}
-            """.format(**locals())
-        plpy.execute(sql)
-
-        t5 = datetime.now()
-        plpy.info("dist table {0}".format(t5-t4))
-        # Find core points
-        # We use __count__ + 1 because we have to add the point itself to the count
         core_points_table = unique_string(desp='core_points_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_points_table))
-        sql = """
-            CREATE TABLE {core_points_table} AS
-            SELECT * FROM (SELECT __src__ AS {id_column}, count(*) AS __count__
-                           FROM {distance_table} GROUP BY __src__) q1
-            WHERE __count__ + 1 >= {min_samples}
-            {dist_id_sql}
-            """.format(**locals())
-        plpy.execute(sql)
-
-        t6 = datetime.now()
-        plpy.info("core points table {0}".format(t6-t5))
-        # Find the connections between core points to form the clusters
         core_edge_table = unique_string(desp='core_edge_table')
         core_edge_table = 'core_edge_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
-        sql = """
+
+        if algorithm == KD_TREE:
+            t4 = datetime.now()
+            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth)
+            kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
+
+            sql = """
+                SELECT count(*), __leaf_id__ FROM {cur_source_table} GROUP BY __leaf_id__
+                """.format(**locals())
+            result = plpy.execute(sql)
+            rt_counts_dict = {}
+            for i in result:
+                rt_counts_dict[i['__leaf_id__']] = int(i['count'])
+            rt_counts_list = []
+            for i in sorted(rt_counts_dict):
+                rt_counts_list.append(rt_counts_dict[i])
+
+            leaf_id_start = pow(2,depth)-1
+            rtree_step_table = unique_string(desp='rtree_step_table')
+            rtree_step_table = 'rtree_step_table'
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(rtree_step_table))
+            sql = """
+            CREATE TABLE {rtree_step_table} AS
+            SELECT __leaf_id__,
+                   {schema_madlib}.rtree_step( {id_column},
+                                               {expr_point},
+                                               {eps},
+                                               {min_samples},
+                                               '{metric}',
+                                               ARRAY{rt_counts_list},
+                                               __leaf_id__ - {leaf_id_start}
+                                               )
+            FROM {cur_source_table} GROUP BY __leaf_id__
+            {dist_leaf_sql}
+            """.format(**locals())
+            plpy.execute(sql)
+
+            t5 = datetime.now()
+            plpy.info("rtree_step_table {0}".format(t5-t4))
+
+            sql = """
             CREATE TABLE {core_edge_table} AS
-            SELECT __src__, __dest__
-            FROM {distance_table} AS __t1__, (SELECT array_agg({id_column}) AS arr
-                                              FROM {core_points_table}) __t2__
-            WHERE __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
-            {dist_src_sql}
-        """.format(**locals())
-        plpy.execute(sql)
+            SELECT __leaf_id__, unnest_result[1] AS __src__, unnest_result[2] AS __dest__
+            FROM (
+                SELECT __leaf_id__,
+                       ({schema_madlib}.array_unnest_2d_to_1d(rtree_step)
+                       ).unnest_result
+                FROM {rtree_step_table}
+                ) q1
+            WHERE unnest_result[2] >= {min_samples}
+            """.format(**locals())
+            plpy.execute(sql)
+            t6 = datetime.now()
+            plpy.info("rt core edge table {0}".format(t6-t5))
 
-        t7 = datetime.now()
-        plpy.info("core edge {0}".format(t7-t6))
-        # Run wcc to get the min id for each cluster
+            sql = """
+            CREATE TABLE {core_points_table} AS
+            SELECT DISTINCT {id_column}
+            FROM(
+                SELECT __src__ AS {id_column}
+                FROM {core_edge_table}
+                UNION
+                SELECT __dest__ AS {id_column}
+                FROM {core_edge_table}
+            )q1
+            {dist_id_sql}
+            """.format(**locals())
+            plpy.execute(sql)
+            t7 = datetime.now()
+            plpy.info("rt core points table {0}".format(t7-t6))
+        else:
+            cur_source_table = source_table
+            kd_join_clause = ''
 
+            t4 = datetime.now()
+
+            # Calculate pairwise distances
+            distance_table = unique_string(desp='distance_table')
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
+
+            sql = """
+                CREATE TABLE {distance_table} AS
+                SELECT __src__, __dest__ FROM (
+                    SELECT  __t1__.{id_column} AS __src__,
+                            __t2__.{id_column} AS __dest__,
+                            {schema_madlib}.{metric}(
+                                __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
+                    FROM {cur_source_table} AS __t1__ INNER JOIN {cur_source_table} AS __t2__
+                    ON(__t1__.{id_column} < __t2__.{id_column} {kd_join_clause}))q1
+                WHERE __dist__ < {eps}
+                {dist_src_sql}
+                """.format(**locals())
+            plpy.execute(sql)
+
+            t5 = datetime.now()
+            plpy.info("dist table {0}".format(t5-t4))
+            # Find core points
+            # We use __count__ + 1 because we have to add the point itself to the count
+            sql = """
+                CREATE TABLE {core_points_table} AS
+                SELECT * FROM (SELECT __src__ AS {id_column}, count(*) AS __count__
+                               FROM {distance_table} GROUP BY __src__) q1
+                WHERE __count__ + 1 >= {min_samples}
+                {dist_id_sql}
+                """.format(**locals())
+            plpy.execute(sql)
+
+            t6 = datetime.now()
+            plpy.info("core points table {0}".format(t6-t5))
+            # Find the connections between core points to form the clusters
+            sql = """
+                CREATE TABLE {core_edge_table} AS
+                SELECT __src__, __dest__
+                FROM {distance_table} AS __t1__, (SELECT array_agg({id_column}) AS arr
+                                                  FROM {core_points_table}) __t2__
+                WHERE __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
+                {dist_src_sql}
+            """.format(**locals())
+            plpy.execute(sql)
+
+            t7 = datetime.now()
+            plpy.info("core edge {0}".format(t7-t6))
+
+        # Start snowflake creation
         if is_platform_pg():
             sql = """
                 SELECT count(*) FROM {core_edge_table}
@@ -150,7 +223,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             seg_id = 'gp_segment_id'
             group_by_clause = 'GROUP BY gp_segment_id'
             dist_clause = 'DISTRIBUTED BY (seg_id)'
-
 
         dbscan_step_table = unique_string(desp='dbscan_step_table')
         dbscan_step_table = 'dbscan_step_table'
@@ -189,6 +261,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         t7_5 = datetime.now()
         plpy.info("snowflake {0}".format(t7_5-t7))
 
+        # Run wcc to get the min id for each cluster
         wcc(schema_madlib, core_points_table, id_column, sf_edge_table,
             'src=__src__, dest=__dest__', output_table, None)
 
@@ -211,6 +284,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         t9 = datetime.now()
         plpy.info("alter tables {0}".format(t9-t8))
+        return
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(reachable_points_table))
@@ -419,6 +493,88 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
             return result['cluster_id']
         else:
             return None
+
+def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
+
+    SD = kwargs['SD']
+    if not state:
+        data = {}
+        SD['counter{0}'.format(leaf_id)] = 0
+    else:
+        data = SD['data{0}'.format(leaf_id)]
+
+    data[id_in] = expr_points
+    SD['counter{0}'.format(leaf_id)] = SD['counter{0}'.format(leaf_id)]+1
+    SD['data{0}'.format(leaf_id)] = data
+    ret = [[-1],[-1]]
+
+    # plpy.info("expr_points {0} for leaf {1}".format(expr_points, leaf_id))
+    # plpy.info("SD['counter'] {0} for leaf {1}".format(SD['counter{0}'.format(leaf_id)], leaf_id))
+    # plpy.info("SD['data'] {0} for leaf {1}".format(SD['data{0}'.format(leaf_id)], leaf_id))
+
+    my_n_rows = n_rows[leaf_id]
+
+    if SD['counter{0}'.format(leaf_id)] == my_n_rows:
+
+        core_counts = {}
+        core_lists = {}
+        p = index.Property()
+        idx = index.Index(properties=p)
+        ret = []
+        for key1, value1 in data.items():
+            idx.add(key1,value1+value1,key1)
+
+        for key1, value1 in data.items():
+            v = [value1[0]-eps, value1[1]-eps, value1[0]+eps, value1[1]+eps]
+            hits = idx.intersection(v)
+            if key1 not in core_counts:
+                core_counts[key1] = 0
+                core_lists[key1] = []
+            for key2 in hits:
+                if key2 != key1:
+                    value2 = data[key2]
+                    distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
+                    if distance <= eps:
+                        core_counts[key1] += 1
+                        core_lists[key1].append(key2)
+
+        # plpy.info("core_counts {0} for leaf {1}".format(core_counts, leaf_id))
+        # plpy.info("core_lists {0} for leaf {1}".format(core_lists, leaf_id))
+
+        for key1, value1 in core_counts.items():
+            if value1 >= min_samples:
+                for key2 in core_lists[key1]:
+                    ret.append([key1,key2])
+
+    return ret
+
+def rtree_merge(state1, state2, **kwargs):
+
+    if not state1:
+        return state2
+    elif not state2:
+        return state1
+    """
+    core_dict1 = dict(zip(state1[0], state1[1]))
+    core_dict2 = dict(zip(state2[0], state2[1]))
+
+    for key1, value1 in core_dict1.items():
+
+        if key1 not in core_dict2:
+            core_dict2[key1] = value1
+        else:
+            core_dict2[key1] += value1
+
+    ret = [core_dict2.keys()]
+    ret.append(core_dict2.values())
+
+    return ret
+    """
+
+def rtree_final(state, **kwargs):
+
+    return state
+
 """
 def dbscan_transition_old(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
 
