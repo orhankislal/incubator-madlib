@@ -524,7 +524,13 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
             idx.add(key1,value1+value1,key1)
 
         for key1, value1 in data.items():
-            v = [value1[0]-eps, value1[1]-eps, value1[0]+eps, value1[1]+eps]
+
+            v1 = []
+            v2 = []
+            for dim in value1:
+                v1.append(dim-eps)
+                v2.append(dim+eps)
+            v = v1+v2
             hits = idx.intersection(v)
             if key1 not in core_counts:
                 core_counts[key1] = 0
