@@ -27,6 +27,7 @@ from utilities.utilities import NUMERIC, ONLY_ARRAY
 from utilities.utilities import is_valid_psql_type
 from utilities.utilities import is_platform_pg
 from utilities.utilities import num_features
+from utilities.utilities import get_seg_number
 from utilities.validate_args import input_tbl_valid, output_tbl_valid
 from utilities.validate_args import is_var_valid
 from utilities.validate_args import cols_in_tbl_valid
@@ -213,13 +214,11 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             sql = """
                 SELECT count(*), gp_segment_id FROM {core_edge_table} GROUP BY gp_segment_id
                 """.format(**locals())
-            result = plpy.execute(sql)
-            counts_dict = {}
-            for i in result:
-                counts_dict[i['gp_segment_id']] = int(i['count'])
-            counts_list = []
-            for i in sorted(counts_dict):
-                counts_list.append(counts_dict[i])
+            count_result = plpy.execute(sql)
+            seg_num = get_seg_number()
+            counts_list = [0]*seg_num
+            for i in count_result:
+                counts_list[count_result['gp_segment_id']] = count_result['count']
             seg_id = 'gp_segment_id'
             group_by_clause = 'GROUP BY gp_segment_id'
             dist_clause = 'DISTRIBUTED BY (seg_id)'
