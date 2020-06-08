@@ -218,7 +218,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             seg_num = get_seg_number()
             counts_list = [0]*seg_num
             for i in count_result:
-                counts_list[int(i['gp_segment_id'])] = int(i['count'])
+                counts_list[count_result['gp_segment_id']] = count_result['count']
             seg_id = 'gp_segment_id'
             group_by_clause = 'GROUP BY gp_segment_id'
             dist_clause = 'DISTRIBUTED BY (seg_id)'
@@ -239,7 +239,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         """.format(**locals())
         plpy.execute(sql)
 
-        return
+
         sf_edge_table = unique_string(desp='sf_edge_table')
         sf_edge_table = 'sf_edge_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(sf_edge_table))
@@ -518,7 +518,6 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         core_counts = {}
         core_lists = {}
         p = index.Property()
-        p.dimension = len(expr_points)
         idx = index.Index(properties=p)
         ret = []
         for key1, value1 in data.items():
@@ -549,10 +548,8 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
 
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
-                curr = [key1]
                 for key2 in core_lists[key1]:
-                    curr.append(key2)
-                ret.append(curr)
+                    ret.append([key1,key2])
 
     return ret
 
