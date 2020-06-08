@@ -549,9 +549,10 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
 
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
+                curr = [key1]
                 for key2 in core_lists[key1]:
-                    ret.append(key1)
-                    ret.append(key2)
+                    curr.append(key2)
+                ret.append(curr)
 
     return ret
 
