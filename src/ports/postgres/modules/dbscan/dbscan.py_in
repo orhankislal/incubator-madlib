@@ -493,6 +493,10 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
         else:
             return None
 
+def pt(leaf_id, str):
+    if leaf_id == 0:
+        plpy.info(str)
+
 def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
 
     SD = kwargs['SD']
@@ -515,17 +519,27 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
 
     if SD['counter{0}'.format(leaf_id)] == my_n_rows:
 
+        tt1 = datetime.now()
+        pt(leaf_id,"start rtree")
+
         core_counts = {}
         core_lists = {}
         p = index.Property()
         p.dimension = len(expr_points)
         idx = index.Index(properties=p)
         ret = []
+        tt2 = datetime.now()
+        pt(leaf_id,"init rtree {0}".format(tt2-tt1))
+
         for key1, value1 in data.items():
             idx.add(key1,value1+value1,key1)
 
+        tt3 = datetime.now()
+        pt(leaf_id,"fill rtree {0}".format(tt3-tt2))
         for key1, value1 in data.items():
 
+            tt4 = datetime.now()
+            pt(leaf_id,"start for key {0}".format(key1))
             v1 = []
             v2 = []
             for dim in value1:
@@ -533,9 +547,13 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
                 v2.append(dim+eps)
             v = v1+v2
             hits = idx.intersection(v)
+
+            tt5 = datetime.now()
+            pt(leaf_id,"intr key {0} {1}".format(key1, tt5-tt4))
             if key1 not in core_counts:
                 core_counts[key1] = 0
                 core_lists[key1] = []
+
             for key2 in hits:
                 if key2 != key1:
                     value2 = data[key2]
@@ -544,13 +562,22 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
                         core_counts[key1] += 1
                         core_lists[key1].append(key2)
 
+            tt6 = datetime.now()
+            pt(leaf_id,"hits key {0} {1}".format(key1, tt6-tt5))
+
         # plpy.info("core_counts {0} for leaf {1}".format(core_counts, leaf_id))
         # plpy.info("core_lists {0} for leaf {1}".format(core_lists, leaf_id))
+
+        tt7 = datetime.now()
+        pt(leaf_id,"done rtree {0}".format(tt7-tt3))
 
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
                 for key2 in core_lists[key1]:
                     ret.append([key1,key2])
+
+        tt8 = datetime.now()
+        pt(leaf_id,"append {0}".format(tt8-tt7))
 
     return ret
 
