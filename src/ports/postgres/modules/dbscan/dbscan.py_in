@@ -76,8 +76,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
 
         if algorithm == KD_TREE:
-            t4 = datetime.now()
             cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth)
+
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
 
             sql = """
@@ -94,6 +94,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             leaf_id_start = pow(2,depth)-1
             rtree_step_table = unique_string(desp='rtree_step_table')
             rtree_step_table = 'rtree_step_table'
+            t4 = datetime.now()
             plpy.execute("DROP TABLE IF EXISTS {0}".format(rtree_step_table))
             sql = """
             CREATE TABLE {rtree_step_table} AS
@@ -538,8 +539,8 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         pt(leaf_id,"fill rtree {0}".format(tt3-tt2))
         for key1, value1 in data.items():
 
-            tt4 = datetime.now()
-            pt(leaf_id,"start for key {0}".format(key1))
+            # tt4 = datetime.now()
+            # pt(leaf_id,"start for key {0}".format(key1))
             v1 = []
             v2 = []
             for dim in value1:
@@ -548,8 +549,8 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
             v = v1+v2
             hits = idx.intersection(v)
 
-            tt5 = datetime.now()
-            pt(leaf_id,"intr key {0} {1}".format(key1, tt5-tt4))
+            # tt5 = datetime.now()
+            # pt(leaf_id,"intr key {0} {1}".format(key1, tt5-tt4))
             if key1 not in core_counts:
                 core_counts[key1] = 0
                 core_lists[key1] = []
@@ -562,8 +563,8 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
                         core_counts[key1] += 1
                         core_lists[key1].append(key2)
 
-            tt6 = datetime.now()
-            pt(leaf_id,"hits key {0} {1}".format(key1, tt6-tt5))
+            # tt6 = datetime.now()
+            # pt(leaf_id,"hits key {0} {1}".format(key1, tt6-tt5))
 
         # plpy.info("core_counts {0} for leaf {1}".format(core_counts, leaf_id))
         # plpy.info("core_lists {0} for leaf {1}".format(core_lists, leaf_id))
