@@ -105,7 +105,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                                                {min_samples},
                                                '{metric}',
                                                ARRAY{rt_counts_list},
-                                               __leaf_id__ - {leaf_id_start}
+                                               __leaf_id__
                                                )
             FROM {cur_source_table} GROUP BY __leaf_id__
             {dist_leaf_sql}
@@ -390,7 +390,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             {dist_leaf_sql}
         """.format(**locals())
-    plpy.info(output_sql)
+    # plpy.info(output_sql)
     plpy.execute(output_sql)
 
     border_sql = """
@@ -399,7 +399,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             WHERE {border_cl}
         """.format(**locals())
-    plpy.info(border_sql)
+    # plpy.info(border_sql)
     plpy.execute(border_sql)
 
     t3 = datetime.now()
