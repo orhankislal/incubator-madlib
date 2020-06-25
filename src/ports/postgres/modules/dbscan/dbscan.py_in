@@ -371,7 +371,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     t2 = datetime.now()
     plpy.info("build kd tree {0}".format(t2-t1))
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
-    plpy.execute("DROP TABLE IF EXISTS {0}".format(kd_source_table))
+    plpy.execute("DROP TABLE IF EXISTS {0},  {1}".format(kd_source_table, kd_border_table))
     # sql = """
     #     CREATE TABLE {kd_source_table} AS
     #     SELECT {id_column}, {expr_point},
@@ -398,7 +398,6 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             SELECT *
             FROM {source_table}
             WHERE {border_cl}
-            {dist_leaf_sql}
         """.format(**locals())
     plpy.info(border_sql)
     plpy.execute(border_sql)
