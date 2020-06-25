@@ -76,7 +76,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
 
         if algorithm == KD_TREE:
-            cur_source_table = dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth)
+            cur_source_table, border_table = dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
 
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
 
@@ -358,39 +358,59 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         #              distance_table, core_points_table, core_edge_table,
         #              reachable_points_table))
 
-def dbscan_kd(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, depth):
+def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth):
 
     t1 = datetime.now()
     n_features = num_features(source_table, expr_point)
 
-    kd_array = build_kd_tree(schema_madlib, source_table, output_table, expr_point,
-                  depth, n_features)
+    kd_array, case_when_clause, border_cl = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
+
     kd_source_table = 'kd_source_table'
+    kd_border_table = 'kd_border_table'
 
     t2 = datetime.now()
     plpy.info("build kd tree {0}".format(t2-t1))
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
     plpy.execute("DROP TABLE IF EXISTS {0}".format(kd_source_table))
-    sql = """
+    # sql = """
+    #     CREATE TABLE {kd_source_table} AS
+    #     SELECT {id_column}, {expr_point},
+    #         unnest({schema_madlib}.get_leaf_list({expr_point},
+    #                                       ARRAY{kd_array}::INTEGER[],
+    #                                       {eps},
+    #                                       {n_features})) AS __leaf_id__
+    #     FROM {source_table}
+    #     {dist_leaf_sql}
+    # """.format(**locals())
+    # plpy.execute(sql)
+    output_sql = """
         CREATE TABLE {kd_source_table} AS
-        SELECT {id_column}, {expr_point},
-            unnest({schema_madlib}.get_leaf_list({expr_point},
-                                          ARRAY{kd_array}::INTEGER[],
-                                          {eps},
-                                          {n_features})) AS __leaf_id__
-        FROM {source_table}
-        {dist_leaf_sql}
-    """.format(**locals())
-    plpy.execute(sql)
+            SELECT *,
+                   CASE {case_when_clause} END AS __leaf_id__
+            FROM {source_table}
+            {dist_leaf_sql}
+        """.format(**locals())
+    plpy.info(output_sql)
+    plpy.execute(output_sql)
+
+    border_sql = """
+        CREATE TABLE {kd_border_table} AS
+            SELECT *
+            FROM {source_table}
+            WHERE {border_cl}
+            {dist_leaf_sql}
+        """.format(**locals())
+    plpy.info(border_sql)
+    plpy.execute(border_sql)
 
     t3 = datetime.now()
     plpy.info("kd source table {0}".format(t3-t2))
-    return kd_source_table
+    return kd_source_table, kd_border_table
 
 
 
-def build_kd_tree(schema_madlib, source_table, output_table, expr_point,
-                  depth, n_features, **kwargs):
+def build_kd_tree(schema_madlib, source_table, expr_point,
+                  depth, n_features, eps, **kwargs):
     """
         KD-tree function to create a partitioning for KNN
         Args:
@@ -407,6 +427,7 @@ def build_kd_tree(schema_madlib, source_table, output_table, expr_point,
         n_features = num_features(source_table, expr_point)
 
         clauses = [' 1=1 ']
+        border_cl = ' 1=1 '
         clause_counter = 0
         kd_array = []
         for curr_level in range(depth):
@@ -432,42 +453,48 @@ def build_kd_tree(schema_madlib, source_table, output_table, expr_point,
                 clauses.append(clause +
                                "AND ({expr_point})[{curr_feature}] >= {cutoff} ".
                                format(**locals()))
+                border_cl = border_cl + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - {eps}
+                                            AND ({expr_point})[{curr_feature}] <= {cutoff} + {eps}
+                                        """.format(**locals())
 
-        return kd_array
+        n_leaves = pow(2, depth)
+        case_when_clause = '\n'.join(["WHEN {0} THEN {1}::INTEGER".format(cond, i)
+                                     for i, cond in enumerate(clauses[-n_leaves:])])
+        return kd_array, case_when_clause, border_cl
 
-def get_leaf_list(schema_madlib, expr_point, kd_array, eps, n_features, **kwargs):
+# def get_leaf_list(schema_madlib, expr_point, kd_array, eps, n_features, **kwargs):
 
-    """
-    kd-tree is represented as an array or boundary values.
-    Array index -> tree node mapping:
-          0
-      +---^---+
-      1       2
-    +-^-+   +-^-+
-    3   4   5   6
-    In this case index i will have the following children: 2i+1 and 2i+2
+#     """
+#     kd-tree is represented as an array or boundary values.
+#     Array index -> tree node mapping:
+#           0
+#       +---^---+
+#       1       2
+#     +-^-+   +-^-+
+#     3   4   5   6
+#     In this case index i will have the following children: 2i+1 and 2i+2
 
-    """
+#     """
 
-    node_q = [0]
-    section_list = []
+#     node_q = [0]
+#     section_list = []
 
-    while node_q:
-        current_node = node_q.pop()
+#     while node_q:
+#         current_node = node_q.pop()
 
-        if current_node > len(kd_array)-1:
-            section_list.append(current_node)
-        else:
-            curr_feature = int(floor(log(current_node+1,2))%n_features)
-            comp_value = expr_point[curr_feature]
+#         if current_node > len(kd_array)-1:
+#             section_list.append(current_node)
+#         else:
+#             curr_feature = int(floor(log(current_node+1,2))%n_features)
+#             comp_value = expr_point[curr_feature]
 
-            if comp_value <= kd_array[current_node]+eps:
-                node_q.append(2*current_node+1)
+#             if comp_value <= kd_array[current_node]+eps:
+#                 node_q.append(2*current_node+1)
 
-            if comp_value >= kd_array[current_node]-eps:
-                node_q.append(2*current_node+2)
+#             if comp_value >= kd_array[current_node]-eps:
+#                 node_q.append(2*current_node+2)
 
-    return section_list
+#     return section_list
 
 
 
@@ -494,9 +521,9 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
         else:
             return None
 
-def pt(leaf_id, str):
-    if leaf_id == 0:
-        plpy.info(str)
+def pt(leaf_id, in_str):
+
+    plpy.info("leaf {0}: {1}".format(leaf_id, in_str))
 
 def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
 
