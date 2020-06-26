@@ -148,8 +148,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
             plpy.execute(sql)
             t7 = datetime.now()
-            print_count(core_points_table)
             plpy.info("rt core points table {0}".format(t7-t6))
+            print_count(core_points_table)
         else:
             cur_source_table = source_table
             kd_join_clause = ''
@@ -557,7 +557,7 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
     if SD['counter{0}'.format(leaf_id)] == my_n_rows:
 
         tt1 = datetime.now()
-        pt(leaf_id,"start rtree")
+        # pt(leaf_id,"start rtree")
 
         core_counts = {}
         core_lists = {}
@@ -566,13 +566,13 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         idx = index.Index(properties=p)
         ret = []
         tt2 = datetime.now()
-        pt(leaf_id,"init rtree {0}".format(tt2-tt1))
+        # pt(leaf_id,"init rtree {0}".format(tt2-tt1))
 
         for key1, value1 in data.items():
             idx.add(key1,value1+value1,key1)
 
         tt3 = datetime.now()
-        pt(leaf_id,"fill rtree {0}".format(tt3-tt2))
+        # pt(leaf_id,"fill rtree {0}".format(tt3-tt2))
         for key1, value1 in data.items():
 
             # tt4 = datetime.now()
@@ -606,7 +606,7 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         # plpy.info("core_lists {0} for leaf {1}".format(core_lists, leaf_id))
 
         tt7 = datetime.now()
-        pt(leaf_id,"done rtree {0}".format(tt7-tt3))
+        # pt(leaf_id,"done rtree {0}".format(tt7-tt3))
 
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
@@ -614,7 +614,7 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
                     ret.append([key1,key2])
 
         tt8 = datetime.now()
-        pt(leaf_id,"append {0}".format(tt8-tt7))
+        # pt(leaf_id,"append {0}".format(tt8-tt7))
 
     return ret
 
