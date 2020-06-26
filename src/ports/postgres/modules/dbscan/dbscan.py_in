@@ -76,7 +76,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         # core_points_table = unique_string(desp='core_points_table')
         core_points_table = 'core_points_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_points_table))
-        core_edge_table = unique_string(desp='core_edge_table')
+        # core_edge_table = unique_string(desp='core_edge_table')
         core_edge_table = 'core_edge_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
 
@@ -97,7 +97,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 rt_counts_list.append(rt_counts_dict[i])
 
             leaf_id_start = pow(2,depth)-1
-            rtree_step_table = unique_string(desp='rtree_step_table')
+            # rtree_step_table = unique_string(desp='rtree_step_table')
             rtree_step_table = 'rtree_step_table'
             t4 = datetime.now()
             plpy.execute("DROP TABLE IF EXISTS {0}".format(rtree_step_table))
@@ -155,7 +155,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             t4 = datetime.now()
 
             # Calculate pairwise distances
-            distance_table = unique_string(desp='distance_table')
+            # distance_table = unique_string(desp='distance_table')
+            distance_table = 'distance_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
 
             sql = """
