@@ -46,6 +46,10 @@ from rtree.index import Rtree
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
 
+def print_count(table):
+
+    plpy.info(plpy.execute("select count(*) from {0}".format(table)))
+
 def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth, **kwargs):
 
     with MinWarning("warning"):
@@ -114,6 +118,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             t5 = datetime.now()
             plpy.info("rtree_step_table {0}".format(t5-t4))
+            print_count(rtree_step_table)
 
             sql = """
             CREATE TABLE {core_edge_table} AS
@@ -127,6 +132,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
             t6 = datetime.now()
             plpy.info("rt core edge table {0}".format(t6-t5))
+            print_count(core_edge_table)
 
             sql = """
             CREATE TABLE {core_points_table} AS
@@ -142,6 +148,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
             plpy.execute(sql)
             t7 = datetime.now()
+            print_count(core_points_table)
             plpy.info("rt core points table {0}".format(t7-t6))
         else:
             cur_source_table = source_table
@@ -169,6 +176,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             t5 = datetime.now()
             plpy.info("dist table {0}".format(t5-t4))
+            print_count(distance_table)
             # Find core points
             # We use __count__ + 1 because we have to add the point itself to the count
             sql = """
@@ -182,6 +190,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             t6 = datetime.now()
             plpy.info("core points table {0}".format(t6-t5))
+            print_count(core_points_table)
             # Find the connections between core points to form the clusters
             sql = """
                 CREATE TABLE {core_edge_table} AS
@@ -195,6 +204,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             t7 = datetime.now()
             plpy.info("core edge {0}".format(t7-t6))
+            print_count(core_edge_table)
 
         # Start snowflake creation
         if is_platform_pg():
@@ -238,6 +248,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         """.format(**locals())
         plpy.execute(sql)
 
+        plpy.info("dbscan_step_table")
+        print_count(dbscan_step_table)
 
         sf_edge_table = unique_string(desp='sf_edge_table')
         sf_edge_table = 'sf_edge_table'
@@ -245,19 +257,19 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         sql = """
             CREATE TABLE {sf_edge_table} AS
-            SELECT seg_id, unnest_result[1] AS __src__, unnest_result[2] AS __dest__
+            SELECT seg_id, (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
             FROM (
                 SELECT seg_id,
-                       ({schema_madlib}.array_unnest_2d_to_1d(dbscan_step)
-                       ).unnest_result
+                       {schema_madlib}.unpack_2d(dbscan_step) AS unpacked_2d
                 FROM {dbscan_step_table}
                 ) q1
             {dist_clause}
-        """.format(**locals())
+            """.format(**locals())
         plpy.execute(sql)
 
         t7_5 = datetime.now()
         plpy.info("snowflake {0}".format(t7_5-t7))
+        print_count(sf_edge_table)
 
         # Run wcc to get the min id for each cluster
         wcc(schema_madlib, core_points_table, id_column, sf_edge_table,
@@ -534,7 +546,7 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
     data[id_in] = expr_points
     SD['counter{0}'.format(leaf_id)] = SD['counter{0}'.format(leaf_id)]+1
     SD['data{0}'.format(leaf_id)] = data
-    ret = []
+    ret = [[-1,-1],[-1,-1]]
 
     # plpy.info("expr_points {0} for leaf {1}".format(expr_points, leaf_id))
     # plpy.info("SD['counter'] {0} for leaf {1}".format(SD['counter{0}'.format(leaf_id)], leaf_id))
@@ -726,7 +738,7 @@ def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
     counter = SD['counter']
 
     data.append([src,dest])
-    ret = [[-1],[-1]]
+    ret = [[-1,-1],[-1,-1]]
 
     my_n_rows = n_rows[gp_segment_id]
 
