@@ -141,9 +141,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             FROM(
                 SELECT __src__ AS {id_column}
                 FROM {core_edge_table}
-                UNION
-                SELECT __dest__ AS {id_column}
-                FROM {core_edge_table}
             )q1
             {dist_id_sql}
             """.format(**locals())
@@ -168,8 +165,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                             __t2__.{id_column} AS __dest__,
                             {schema_madlib}.{metric}(
                                 __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
-                    FROM {cur_source_table} AS __t1__ INNER JOIN {cur_source_table} AS __t2__
-                    ON(__t1__.{id_column} < __t2__.{id_column} {kd_join_clause}))q1
+                    FROM {cur_source_table} AS __t1__, {cur_source_table} AS __t2__)q1
                 WHERE __dist__ < {eps}
                 {dist_src_sql}
                 """.format(**locals())
@@ -184,10 +180,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 CREATE TABLE {core_points_table} AS
                 SELECT * FROM (
                     SELECT __src__ AS {id_column}, count(*) AS __count__
-                    FROM {distance_table} GROUP BY __src__
-                    UNION
-                    SELECT __dest__ AS {id_column}, count(*) AS __count__
-                    FROM {distance_table} GROUP BY __dest__) q1
+                    FROM {distance_table} GROUP BY __src__) q1
                 WHERE __count__ + 1 >= {min_samples}
                 {dist_id_sql}
                 """.format(**locals())
