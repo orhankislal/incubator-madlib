@@ -440,3 +440,15 @@ CREATE AGGREGATE MADLIB_SCHEMA.rtree_step(
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.rtree_merge,')
     FINALFUNC=MADLIB_SCHEMA.rtree_final
 );
+
+DROP TYPE IF EXISTS MADLIB_SCHEMA.unpacked_2d CASCADE;
+CREATE TYPE MADLIB_SCHEMA.unpacked_2d AS (
+    src INTEGER,
+    dest INTEGER);
+
+CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.unpack_2d (packed INTEGER[][])
+  RETURNS SETOF unpacked_2d
+AS $$
+    return packed
+$$ LANGUAGE plpythonu VOLATILE
+m4_ifdef(`\_\_HAS_FUNCTION_PROPERTIES\_\_', `MODIFIES SQL DATA', `');
