@@ -182,8 +182,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             # We use __count__ + 1 because we have to add the point itself to the count
             sql = """
                 CREATE TABLE {core_points_table} AS
-                SELECT * FROM (SELECT __src__ AS {id_column}, count(*) AS __count__
-                               FROM {distance_table} GROUP BY __src__) q1
+                SELECT * FROM (
+                    SELECT __src__ AS {id_column}, count(*) AS __count__
+                    FROM {distance_table} GROUP BY __src__
+                    UNION
+                    SELECT __dest__ AS {id_column}, count(*) AS __count__
+                    FROM {distance_table} GROUP BY __dest__) q1
                 WHERE __count__ + 1 >= {min_samples}
                 {dist_id_sql}
                 """.format(**locals())
