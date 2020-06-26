@@ -73,7 +73,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         dist_reach_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__reachable_id__)'
         dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
 
-        core_points_table = unique_string(desp='core_points_table')
+        # core_points_table = unique_string(desp='core_points_table')
+        core_points_table = 'core_points_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_points_table))
         core_edge_table = unique_string(desp='core_edge_table')
         core_edge_table = 'core_edge_table'
@@ -592,12 +593,12 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
                 core_lists[key1] = []
 
             for key2 in hits:
-                if key2 != key1:
-                    value2 = data[key2]
-                    distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
-                    if distance <= eps:
-                        core_counts[key1] += 1
-                        core_lists[key1].append(key2)
+                # if key2 != key1:
+                value2 = data[key2]
+                distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
+                if distance <= eps:
+                    core_counts[key1] += 1
+                    core_lists[key1].append(key2)
 
             # tt6 = datetime.now()
             # pt(leaf_id,"hits key {0} {1}".format(key1, tt6-tt5))
