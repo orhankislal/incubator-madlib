@@ -177,9 +177,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             sql = """
                 CREATE TABLE {core_points_table} AS
-                SELECT {id_column} FROM {border_core_points_table}
-                UNION
-                SELECT __src__ AS {id_column} FROM {border_distance_table} GROUP BY __src__
+                SELECT DISTINCT(__src__) AS {id_column} FROM {core_edge_table}
                 """.format(**locals())
             plpy.execute(sql)
 
