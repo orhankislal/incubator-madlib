@@ -136,10 +136,10 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
 
             # # Start border
-            # border_distance_table = 'border_distance_table'
-            # plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
+            border_distance_table = 'border_distance_table'
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
             sql = """
-                INSERT INTO {core_edge_table}
+                CREATE TABLE {border_distance_table}
                 SELECT __src__, __dest__ FROM (
                     SELECT  __t1__.{id_column} AS __src__,
                             __t2__.{id_column} AS __dest__,
@@ -150,23 +150,44 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 """.format(**locals())
             plpy.execute(sql)
 
-            t6_5 = datetime.now()
-            plpy.info("border added core edge {0}".format(t6_5-t6))
-            print_count(core_edge_table)
+            t6_1 = datetime.now()
+            plpy.info("border core edge table {0}".format(t6_1-t6))
+
+            border_core_points_table = 'border_core_points_table'
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(border_core_points_table))
+            sql = """
+                CREATE TABLE {border_core_points_table} AS
+                SELECT * FROM (
+                    SELECT __src__ AS {id_column}, count(*) AS __count__
+                    FROM {border_distance_table} GROUP BY __src__) q1
+                WHERE __count__ >= {min_samples}
+                UNION
+                SELECT
+                {dist_id_sql}
+                """.format(**locals())
+            plpy.execute(sql)
 
             sql = """
-            CREATE TABLE {core_points_table} AS
-            SELECT DISTINCT {id_column}
-            FROM(
-                SELECT __src__ AS {id_column}, count(*) AS __count__
-                FROM {core_edge_table} GROUP BY __src__
-            )q1
-            WHERE __count__ >= {min_samples}
-            {dist_id_sql}
-            """.format(**locals())
+                INSERT INTO {core_edge_table}
+                SELECT __t1__.__src__, __t1__.__dest__
+                FROM {border_distance_table} __t1__ ,
+                    (SELECT array_agg({id_column}) AS arr
+                     FROM {border_core_points_table}) __t2__
+                WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
+                """.format(**locals())
             plpy.execute(sql)
+
+            sql = """
+                CREATE TABLE {core_points_table} AS
+                SELECT {id_column} FROM {border_core_points_table}
+                UNION
+                SELECT __src__ AS {id_column} FROM {border_distance_table} GROUP BY __src__
+                """.format(**locals())
+            plpy.execute(sql)
+
+
             t7 = datetime.now()
-            plpy.info("rt core points table {0}".format(t7-t6_5))
+            plpy.info("rt core points table {0}".format(t7-t6_1))
             print_count(core_points_table)
 
         else:
