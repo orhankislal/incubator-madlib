@@ -65,9 +65,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         _validate_dbscan(schema_madlib, source_table, output_table, id_column,
                          expr_point, eps, min_samples, metric, algorithm, depth)
 
-
-
-
         dist_src_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__src__)'
         dist_id_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY ({0})'.format(id_column)
         dist_reach_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__reachable_id__)'
@@ -398,6 +395,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
 
     kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
 
+    plpy.info("kd array: {0}".format(kd_array))
     kd_source_table = 'kd_source_table'
     kd_border_table1 = 'kd_border_table1'
     kd_border_table2 = 'kd_border_table2'
