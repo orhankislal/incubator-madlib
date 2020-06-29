@@ -81,7 +81,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
 
         if algorithm == KD_TREE:
-            cur_source_table, border_table = dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
+            cur_source_table, border_table1, border_table2 = dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
 
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
 
@@ -129,10 +129,32 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                        {schema_madlib}.unpack_2d(rtree_step) AS unpacked_2d
                 FROM {rtree_step_table}
                 ) q1
+            WHERE (unpacked_2d).src != (SELECT __src__ FROM {border_table1})
             """.format(**locals())
             plpy.execute(sql)
             t6 = datetime.now()
             plpy.info("rt core edge table {0}".format(t6-t5))
+            print_count(core_edge_table)
+
+
+            # # Start border
+            # border_distance_table = 'border_distance_table'
+            # plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
+            sql = """
+                INSERT INTO {core_edge_table}
+                SELECT __src__, __dest__ FROM (
+                    SELECT  __t1__.{id_column} AS __src__,
+                            __t2__.{id_column} AS __dest__,
+                            {schema_madlib}.{metric}(
+                                __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
+                    FROM {border_table1} AS __t1__, {border_table2} AS __t2__)q1
+                WHERE __dist__ < {eps}
+                {dist_src_sql}
+                """.format(**locals())
+            plpy.execute(sql)
+
+            t6_5 = datetime.now()
+            plpy.info("border added core edge {0}".format(t6_5-t6))
             print_count(core_edge_table)
 
             sql = """
@@ -146,8 +168,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
             plpy.execute(sql)
             t7 = datetime.now()
-            plpy.info("rt core points table {0}".format(t7-t6))
+            plpy.info("rt core points table {0}".format(t7-t6_5))
             print_count(core_points_table)
+
         else:
             cur_source_table = source_table
             kd_join_clause = ''
@@ -372,15 +395,16 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     t1 = datetime.now()
     n_features = num_features(source_table, expr_point)
 
-    kd_array, case_when_clause, border_cl = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
+    kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
 
     kd_source_table = 'kd_source_table'
-    kd_border_table = 'kd_border_table'
+    kd_border_table1 = 'kd_border_table1'
+    kd_border_table2 = 'kd_border_table2'
 
     t2 = datetime.now()
     plpy.info("build kd tree {0}".format(t2-t1))
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
-    plpy.execute("DROP TABLE IF EXISTS {0},  {1}".format(kd_source_table, kd_border_table))
+    plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}".format(kd_source_table, kd_border_table1, kd_border_table2))
     # sql = """
     #     CREATE TABLE {kd_source_table} AS
     #     SELECT {id_column}, {expr_point},
@@ -403,17 +427,26 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     plpy.execute(output_sql)
 
     border_sql = """
-        CREATE TABLE {kd_border_table} AS
+        CREATE TABLE {kd_border_table1} AS
             SELECT *
             FROM {source_table}
-            WHERE {border_cl}
+            WHERE {border_cl1}
+        """.format(**locals())
+    # plpy.info(border_sql)
+    plpy.execute(border_sql)
+
+    border_sql = """
+        CREATE TABLE {kd_border_table2} AS
+            SELECT *
+            FROM {source_table}
+            WHERE {border_cl2}
         """.format(**locals())
     # plpy.info(border_sql)
     plpy.execute(border_sql)
 
     t3 = datetime.now()
     plpy.info("kd source table {0}".format(t3-t2))
-    return kd_source_table, kd_border_table
+    return kd_source_table, kd_border_table1, kd_border_table2
 
 
 
@@ -435,7 +468,8 @@ def build_kd_tree(schema_madlib, source_table, expr_point,
         n_features = num_features(source_table, expr_point)
 
         clauses = [' 1=1 ']
-        border_cl = ' 1=1 '
+        border_cl1 = ' 1=1 '
+        border_cl2 = ' 1=1 '
         clause_counter = 0
         kd_array = []
         for curr_level in range(depth):
@@ -461,14 +495,17 @@ def build_kd_tree(schema_madlib, source_table, expr_point,
                 clauses.append(clause +
                                "AND ({expr_point})[{curr_feature}] >= {cutoff} ".
                                format(**locals()))
-                border_cl = border_cl + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - {eps}
+                border_cl1 = border_cl1 + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - {eps}
                                             AND ({expr_point})[{curr_feature}] <= {cutoff} + {eps}
+                                        """.format(**locals())
+                border_cl2 = border_cl2 + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - (2*{eps})
+                                            AND ({expr_point})[{curr_feature}] <= {cutoff} + (2*{eps})
                                         """.format(**locals())
 
         n_leaves = pow(2, depth)
         case_when_clause = '\n'.join(["WHEN {0} THEN {1}::INTEGER".format(cond, i)
                                      for i, cond in enumerate(clauses[-n_leaves:])])
-        return kd_array, case_when_clause, border_cl
+        return kd_array, case_when_clause, border_cl1, border_cl2
 
 # def get_leaf_list(schema_madlib, expr_point, kd_array, eps, n_features, **kwargs):
 
