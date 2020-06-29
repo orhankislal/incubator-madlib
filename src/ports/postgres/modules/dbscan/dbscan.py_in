@@ -434,7 +434,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             WHERE {border_cl1}
         """.format(**locals())
-    # plpy.info(border_sql)
+    plpy.info(border_sql)
     plpy.execute(border_sql)
 
     border_sql = """
@@ -497,11 +497,11 @@ def build_kd_tree(schema_madlib, source_table, expr_point,
                 clauses.append(clause +
                                "AND ({expr_point})[{curr_feature}] >= {cutoff} ".
                                format(**locals()))
-                border_cl1 = border_cl1 + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - {eps}
-                                            AND ({expr_point})[{curr_feature}] <= {cutoff} + {eps}
+                border_cl1 = border_cl1 + """ OR ({expr_point})[{curr_feature}] >= {cutoff} - {eps}
+                                            OR ({expr_point})[{curr_feature}] <= {cutoff} + {eps}
                                         """.format(**locals())
-                border_cl2 = border_cl2 + """ AND ({expr_point})[{curr_feature}] >= {cutoff} - (2*{eps})
-                                            AND ({expr_point})[{curr_feature}] <= {cutoff} + (2*{eps})
+                border_cl2 = border_cl2 + """ OR ({expr_point})[{curr_feature}] >= {cutoff} - (2*{eps})
+                                            OR ({expr_point})[{curr_feature}] <= {cutoff} + (2*{eps})
                                         """.format(**locals())
 
         n_leaves = pow(2, depth)
