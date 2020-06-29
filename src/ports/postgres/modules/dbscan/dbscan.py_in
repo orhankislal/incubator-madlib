@@ -663,7 +663,8 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
                 for key2 in core_lists[key1]:
-                    ret.append([key1,key2])
+                    if core_counts[key2] >= min_samples:
+                        ret.append([key1,key2])
 
         tt8 = datetime.now()
         # pt(leaf_id,"append {0}".format(tt8-tt7))
