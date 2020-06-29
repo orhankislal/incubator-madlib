@@ -161,8 +161,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                     SELECT __src__ AS {id_column}, count(*) AS __count__
                     FROM {border_distance_table} GROUP BY __src__) q1
                 WHERE __count__ >= {min_samples}
-                UNION
-                SELECT
                 {dist_id_sql}
                 """.format(**locals())
             plpy.execute(sql)
