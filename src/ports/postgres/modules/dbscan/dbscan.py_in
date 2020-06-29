@@ -48,7 +48,7 @@ KD_TREE = 'kd_tree'
 
 def print_count(table):
 
-    plpy.info("{0} count {1}".format(table, plpy.execute("select count(*) from {0}".format(table))))
+    plpy.info("{0} count {1}".format(table, plpy.execute("select count(*) from {0}".format(table))[0]['count']))
 
 def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth, **kwargs):
 
@@ -139,7 +139,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             border_distance_table = 'border_distance_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
             sql = """
-                CREATE TABLE {border_distance_table}
+                CREATE TABLE {border_distance_table} AS
                 SELECT __src__, __dest__ FROM (
                     SELECT  __t1__.{id_column} AS __src__,
                             __t2__.{id_column} AS __dest__,
@@ -417,9 +417,6 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
 
     plpy.info("kd array: {0}".format(kd_array))
-    plpy.info("case_when_clause: {0}".format(case_when_clause))
-    plpy.info("border_cl1: {0}".format(border_cl1))
-    plpy.info("border_cl2: {0}".format(border_cl2))
     kd_source_table = 'kd_source_table'
     kd_border_table1 = 'kd_border_table1'
     kd_border_table2 = 'kd_border_table2'
@@ -455,7 +452,7 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             WHERE {border_cl1}
         """.format(**locals())
-    plpy.info(border_sql)
+    # plpy.info(border_sql)
     plpy.execute(border_sql)
 
     border_sql = """
