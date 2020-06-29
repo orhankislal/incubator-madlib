@@ -396,6 +396,9 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
 
     plpy.info("kd array: {0}".format(kd_array))
+    plpy.info("case_when_clause: {0}".format(case_when_clause))
+    plpy.info("border_cl1: {0}".format(border_cl1))
+    plpy.info("border_cl2: {0}".format(border_cl2))
     kd_source_table = 'kd_source_table'
     kd_border_table1 = 'kd_border_table1'
     kd_border_table2 = 'kd_border_table2'
