@@ -48,7 +48,7 @@ KD_TREE = 'kd_tree'
 
 def print_count(table):
 
-    plpy.info(plpy.execute("select count(*) from {0}".format(table)))
+    plpy.info("{0} count {1}".format(table, plpy.execute("select count(*) from {0}".format(table))))
 
 def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth, **kwargs):
 
@@ -161,9 +161,10 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             CREATE TABLE {core_points_table} AS
             SELECT DISTINCT {id_column}
             FROM(
-                SELECT __src__ AS {id_column}
-                FROM {core_edge_table}
+                SELECT __src__ AS {id_column}, count(*) AS __count__
+                FROM {core_edge_table} GROUP BY __src__
             )q1
+            WHERE __count__ >= {min_samples}
             {dist_id_sql}
             """.format(**locals())
             plpy.execute(sql)
@@ -316,6 +317,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         t9 = datetime.now()
         plpy.info("alter tables {0}".format(t9-t8))
         return
+
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
         plpy.execute("DROP TABLE IF EXISTS {0}".format(reachable_points_table))
