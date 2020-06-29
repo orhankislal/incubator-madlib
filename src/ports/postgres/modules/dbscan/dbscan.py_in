@@ -199,13 +199,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.info("dist table {0}".format(t5-t4))
             print_count(distance_table)
             # Find core points
-            # We use __count__ + 1 because we have to add the point itself to the count
             sql = """
                 CREATE TABLE {core_points_table} AS
                 SELECT * FROM (
                     SELECT __src__ AS {id_column}, count(*) AS __count__
                     FROM {distance_table} GROUP BY __src__) q1
-                WHERE __count__ + 1 >= {min_samples}
+                WHERE __count__ >= {min_samples}
                 {dist_id_sql}
                 """.format(**locals())
             plpy.execute(sql)
