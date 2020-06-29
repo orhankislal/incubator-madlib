@@ -470,8 +470,8 @@ def build_kd_tree(schema_madlib, source_table, expr_point,
         n_features = num_features(source_table, expr_point)
 
         clauses = [' 1=1 ']
-        border_cl1 = ' 1=1 '
-        border_cl2 = ' 1=1 '
+        border_cl1 = ' 1!=1 '
+        border_cl2 = ' 1!=1 '
         clause_counter = 0
         kd_array = []
         for curr_level in range(depth):
