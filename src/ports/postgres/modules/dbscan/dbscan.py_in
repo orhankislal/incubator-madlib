@@ -129,7 +129,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                        {schema_madlib}.unpack_2d(rtree_step) AS unpacked_2d
                 FROM {rtree_step_table}
                 ) q1
-            WHERE (unpacked_2d).src != (SELECT __src__ FROM {border_table1})
+            WHERE (unpacked_2d).src NOT IN (SELECT {id_column} FROM {border_table1})
             """.format(**locals())
             plpy.execute(sql)
             t6 = datetime.now()
