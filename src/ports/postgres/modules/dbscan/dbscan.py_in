@@ -120,7 +120,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             sql = """
             CREATE TABLE {core_edge_table} AS
-            SELECT __leaf_id__, (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
+            SELECT (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
             FROM (
                 SELECT __leaf_id__,
                        {schema_madlib}.unpack_2d(rtree_step) AS unpacked_2d
