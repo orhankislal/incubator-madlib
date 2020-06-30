@@ -133,7 +133,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
             t6 = datetime.now()
             plpy.info("rt core edge table {0}".format(t6-t5))
-            print_count(core_edge_table)
+            print_count(rt_edge_table)
 
             rt_core_points_table = 'rt_core_points_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_core_points_table))
