@@ -142,6 +142,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
 
             # # Start border
+            print_count(border_table1)
+            print_count(border_table2)
             border_distance_table = 'border_distance_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
             sql = """
