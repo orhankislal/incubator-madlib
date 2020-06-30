@@ -118,12 +118,13 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.info("rtree_step_table {0}".format(t5-t4))
             print_count(rtree_step_table)
 
+            rt_edge_table = 'rt_edge_table'
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_edge_table))
             sql = """
-            CREATE TABLE {core_edge_table} AS
+            CREATE TABLE {rt_edge_table} AS
             SELECT (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
             FROM (
-                SELECT __leaf_id__,
-                       {schema_madlib}.unpack_2d(rtree_step) AS unpacked_2d
+                SELECT {schema_madlib}.unpack_2d(rtree_step) AS unpacked_2d
                 FROM {rtree_step_table}
                 ) q1
             WHERE (unpacked_2d).src NOT IN (SELECT {id_column} FROM {border_table1})
@@ -134,6 +135,13 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.info("rt core edge table {0}".format(t6-t5))
             print_count(core_edge_table)
 
+            rt_core_points_table = 'rt_core_points_table'
+            plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_core_points_table))
+            sql = """
+                CREATE TABLE {rt_core_points_table} AS
+                SELECT DISTINCT(__src__) AS {id_column} FROM {rt_edge_table}
+                """.format(**locals())
+            plpy.execute(sql)
 
             # # Start border
             border_distance_table = 'border_distance_table'
@@ -166,7 +174,13 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
 
             sql = """
-                INSERT INTO {core_edge_table}
+                CREATE TABLE {core_edge_table} AS
+                SELECT __t1__.__src__, __t1__.__dest__
+                FROM {rt_edge_table} __t1__ ,
+                    (SELECT array_agg({id_column}) AS arr
+                     FROM {rt_core_points_table}) __t2__
+                WHERE  __t1__.__dest__ = ANY(arr)
+                UNION
                 SELECT __t1__.__src__, __t1__.__dest__
                 FROM {border_distance_table} __t1__ ,
                     (SELECT array_agg({id_column}) AS arr
@@ -177,7 +191,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             sql = """
                 CREATE TABLE {core_points_table} AS
-                SELECT DISTINCT(__src__) AS {id_column} FROM {core_edge_table}
+                SELECT {id_column} FROM {border_core_points_table}
+                UNION
+                SELECT {id_column} FROM {rt_core_points_table}
                 """.format(**locals())
             plpy.execute(sql)
 
@@ -663,8 +679,7 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
                 for key2 in core_lists[key1]:
-                    if core_counts[key2] >= min_samples:
-                        ret.append([key1,key2])
+                    ret.append([key1,key2])
 
         tt8 = datetime.now()
         # pt(leaf_id,"append {0}".format(tt8-tt7))
