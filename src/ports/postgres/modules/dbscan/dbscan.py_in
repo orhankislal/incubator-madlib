@@ -116,7 +116,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
             t5 = datetime.now()
             plpy.info("rtree_step_table {0}".format(t5-t4))
-            print_count(rtree_step_table)
 
             rt_edge_table = 'rt_edge_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_edge_table))
@@ -132,8 +131,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
             plpy.execute(sql)
             t6 = datetime.now()
-            plpy.info("rt core edge table {0}".format(t6-t5))
-            print_count(rt_edge_table)
+            plpy.info("rt edge table {0}".format(t6-t5))
 
             rt_core_points_table = 'rt_core_points_table'
             plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_core_points_table))
@@ -174,29 +172,30 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
 
             sql = """
-                CREATE TABLE {core_edge_table} AS
-                SELECT __t1__.__src__, __t1__.__dest__
-                FROM {rt_edge_table} __t1__ ,
-                    (SELECT array_agg({id_column}) AS arr
-                     FROM {rt_core_points_table}) __t2__
-                WHERE  __t1__.__dest__ = ANY(arr)
-                UNION
-                SELECT __t1__.__src__, __t1__.__dest__
-                FROM {border_distance_table} __t1__ ,
-                    (SELECT array_agg({id_column}) AS arr
-                     FROM {border_core_points_table}) __t2__
-                WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
-                """.format(**locals())
-            plpy.execute(sql)
-            print_count(core_edge_table)
-
-            sql = """
                 CREATE TABLE {core_points_table} AS
                 SELECT {id_column} FROM {border_core_points_table}
                 UNION
                 SELECT {id_column} FROM {rt_core_points_table}
                 """.format(**locals())
             plpy.execute(sql)
+
+            sql = """
+                CREATE TABLE {core_edge_table} AS
+                SELECT __t1__.__src__, __t1__.__dest__
+                FROM {rt_edge_table} __t1__ ,
+                    (SELECT array_agg({id_column}) AS arr
+                     FROM {core_points_table}) __t2__
+                WHERE  __t1__.__dest__ = ANY(arr)
+                UNION
+                SELECT __t1__.__src__, __t1__.__dest__
+                FROM {border_distance_table} __t1__ ,
+                    (SELECT array_agg({id_column}) AS arr
+                     FROM {core_points_table}) __t2__
+                WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
+                """.format(**locals())
+            plpy.execute(sql)
+            print_count(core_edge_table)
+
 
 
             t7 = datetime.now()
