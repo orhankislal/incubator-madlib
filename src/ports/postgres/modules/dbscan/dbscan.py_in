@@ -188,6 +188,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
                 """.format(**locals())
             plpy.execute(sql)
+            print_count(core_edge_table)
 
             sql = """
                 CREATE TABLE {core_points_table} AS
