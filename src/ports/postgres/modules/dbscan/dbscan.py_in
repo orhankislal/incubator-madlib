@@ -373,6 +373,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
 
         output_summary_table = add_postfix(output_table, '_summary')
 
+        # Drop the summary table from wcc
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(output_summary_table))
         sql = """
             CREATE TABLE {output_summary_table} AS
             SELECT  '{id_column}'::VARCHAR AS id_column,
