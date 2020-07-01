@@ -77,7 +77,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
         core_points_table = unique_string(desp='core_points_table')
         core_edge_table = unique_string(desp='core_edge_table')
         distance_table = unique_string(desp='distance_table')
-        plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {3}".format(
+        plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}".format(
             core_points_table, core_edge_table, distance_table))
 
         if algorithm == KD_TREE:
