@@ -76,6 +76,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         # core_edge_table = unique_string(desp='core_edge_table')
         core_edge_table = 'core_edge_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
+        # distance_table = unique_string(desp='distance_table')
+        distance_table = 'distance_table'
+        plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
 
         if algorithm == KD_TREE:
             cur_source_table, border_table1, border_table2 = dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
@@ -144,10 +147,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             # # Start border
             print_count(border_table1)
             print_count(border_table2)
-            border_distance_table = 'border_distance_table'
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(border_distance_table))
             sql = """
-                CREATE TABLE {border_distance_table} AS
+                CREATE TABLE {distance_table} AS
                 SELECT __src__, __dest__ FROM (
                     SELECT  __t1__.{id_column} AS __src__,
                             __t2__.{id_column} AS __dest__,
@@ -167,7 +168,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 CREATE TABLE {border_core_points_table} AS
                 SELECT * FROM (
                     SELECT __src__ AS {id_column}, count(*) AS __count__
-                    FROM {border_distance_table} GROUP BY __src__) q1
+                    FROM {distance_table} GROUP BY __src__) q1
                 WHERE __count__ >= {min_samples}
                 {dist_id_sql}
                 """.format(**locals())
@@ -190,15 +191,13 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 WHERE  __t1__.__dest__ = ANY(arr)
                 UNION
                 SELECT __t1__.__src__, __t1__.__dest__
-                FROM {border_distance_table} __t1__ ,
+                FROM {distance_table} __t1__ ,
                     (SELECT array_agg({id_column}) AS arr
                      FROM {core_points_table}) __t2__
                 WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
                 """.format(**locals())
             plpy.execute(sql)
             print_count(core_edge_table)
-
-
 
             t7 = datetime.now()
             plpy.info("rt core points table {0}".format(t7-t6_1))
@@ -211,9 +210,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             t4 = datetime.now()
 
             # Calculate pairwise distances
-            # distance_table = unique_string(desp='distance_table')
-            distance_table = 'distance_table'
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
 
             sql = """
                 CREATE TABLE {distance_table} AS
@@ -259,7 +255,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             t7 = datetime.now()
             plpy.info("core edge {0}".format(t7-t6))
             print_count(core_edge_table)
-        return
+
         # Start snowflake creation
         if is_platform_pg():
             sql = """
@@ -348,7 +344,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         t9 = datetime.now()
         plpy.info("alter tables {0}".format(t9-t8))
-        return
 
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
