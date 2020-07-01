@@ -104,9 +104,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             rt_core_points_table = unique_string(desp='rt_core_points_table')
             border_core_points_table = unique_string(desp='border_core_points_table')
             border_edge_table = unique_string(desp='border_edge_table')
-            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
+            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}".format(
                 rtree_step_table, rt_edge_table, rt_core_points_table,
-                border_core_points_table))
+                border_core_points_table, border_edge_table))
 
             sql = """
             CREATE TABLE {rtree_step_table} AS
@@ -197,14 +197,15 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                 """.format(**locals())
             plpy.execute(sql)
 
+            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}".format(
+                rtree_step_table, rt_edge_table, rt_core_points_table,
+                border_core_points_table, border_edge_table))
+
         else:
             cur_source_table = source_table
             kd_join_clause = ''
 
-            t4 = datetime.now()
-
             # Calculate pairwise distances
-
             sql = """
                 CREATE TABLE {distance_table} AS
                 SELECT __src__, __dest__ FROM (
@@ -218,9 +219,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                 """.format(**locals())
             plpy.execute(sql)
 
-            t5 = datetime.now()
-            plpy.info("dist table {0}".format(t5-t4))
-            print_count(distance_table)
             # Find core points
             sql = """
                 CREATE TABLE {core_points_table} AS
@@ -232,9 +230,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                 """.format(**locals())
             plpy.execute(sql)
 
-            t6 = datetime.now()
-            plpy.info("core points table {0}".format(t6-t5))
-            print_count(core_points_table)
             # Find the connections between core points to form the clusters
             sql = """
                 CREATE TABLE {core_edge_table} AS
@@ -245,10 +240,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                 {dist_src_sql}
             """.format(**locals())
             plpy.execute(sql)
-
-            t7 = datetime.now()
-            plpy.info("core edge {0}".format(t7-t6))
-            print_count(core_edge_table)
 
         # Start snowflake creation
         if is_platform_pg():
@@ -276,7 +267,10 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             dist_clause = 'DISTRIBUTED BY (seg_id)'
 
         dbscan_step_table = unique_string(desp='dbscan_step_table')
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(dbscan_step_table))
+        sf_edge_table = unique_string(desp='sf_edge_table')
+
+        plpy.execute("DROP TABLE IF EXISTS {0}, {1}".format(
+            dbscan_step_table, sf_edge_table))
         sql = """
             CREATE TABLE {dbscan_step_table} AS
             SELECT {seg_id}::INTEGER AS seg_id,
@@ -290,13 +284,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
         """.format(**locals())
         plpy.execute(sql)
 
-        plpy.info("dbscan_step_table")
-        print_count(dbscan_step_table)
-
-        sf_edge_table = unique_string(desp='sf_edge_table')
-        sf_edge_table = 'sf_edge_table'
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(sf_edge_table))
-
         sql = """
             CREATE TABLE {sf_edge_table} AS
             SELECT seg_id, (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
@@ -309,15 +296,9 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             """.format(**locals())
         plpy.execute(sql)
 
-        t7_5 = datetime.now()
-        print_count(sf_edge_table)
-
         # Run wcc to get the min id for each cluster
         wcc(schema_madlib, core_points_table, id_column, sf_edge_table,
             'src=__src__, dest=__dest__', output_table, None)
-
-        t8 = datetime.now()
-        plpy.info("wcc {0}".format(t8-t7_5))
 
         plpy.execute("""
             ALTER TABLE {0}
@@ -334,7 +315,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
         """.format(output_table))
 
         t9 = datetime.now()
-        plpy.info("alter tables {0}".format(t9-t8))
 
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
@@ -369,6 +349,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
 
         t11 = datetime.now()
         plpy.info("output table {0}".format(t11-t10))
+
         # Add features of points to the output table to use them for prediction
         sql = """
             UPDATE {output_table} AS __t1__
@@ -378,8 +359,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
         """.format(**locals())
         plpy.execute(sql)
 
-        t12 = datetime.now()
-        plpy.info("output table up1 {0}".format(t12-t11))
         # Update the cluster ids to be consecutive
         sql = """
             UPDATE {output_table} AS __t1__
@@ -392,11 +371,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
         """.format(**locals())
         plpy.execute(sql)
 
-        t13 = datetime.now()
-        plpy.info("output table up2{0}".format(t13-t12))
-
         output_summary_table = add_postfix(output_table, '_summary')
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(output_summary_table))
 
         sql = """
             CREATE TABLE {output_summary_table} AS
@@ -406,13 +381,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             """.format(**locals())
         plpy.execute(sql)
 
-        # plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
-        #              distance_table, core_points_table, core_edge_table,
-        #              reachable_points_table))
+        plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}, {5}".format(
+                     distance_table, core_points_table, core_edge_table,
+                     reachable_points_table, dbscan_step_table, sf_edge_table))
 
 def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth):
 
-    t1 = datetime.now()
     n_features = num_features(source_table, expr_point)
 
     kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
@@ -422,21 +396,9 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
     kd_border_table1 = 'kd_border_table1'
     kd_border_table2 = 'kd_border_table2'
 
-    t2 = datetime.now()
-    plpy.info("build kd tree {0}".format(t2-t1))
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
     plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}".format(kd_source_table, kd_border_table1, kd_border_table2))
-    # sql = """
-    #     CREATE TABLE {kd_source_table} AS
-    #     SELECT {id_column}, {expr_point},
-    #         unnest({schema_madlib}.get_leaf_list({expr_point},
-    #                                       ARRAY{kd_array}::INTEGER[],
-    #                                       {eps},
-    #                                       {n_features})) AS __leaf_id__
-    #     FROM {source_table}
-    #     {dist_leaf_sql}
-    # """.format(**locals())
-    # plpy.execute(sql)
+
     output_sql = """
         CREATE TABLE {kd_source_table} AS
             SELECT *,
@@ -444,7 +406,6 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             {dist_leaf_sql}
         """.format(**locals())
-    # plpy.info(output_sql)
     plpy.execute(output_sql)
 
     border_sql = """
@@ -453,7 +414,6 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             WHERE {border_cl1}
         """.format(**locals())
-    # plpy.info(border_sql)
     plpy.execute(border_sql)
 
     border_sql = """
@@ -462,13 +422,9 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
             FROM {source_table}
             WHERE {border_cl2}
         """.format(**locals())
-    # plpy.info(border_sql)
     plpy.execute(border_sql)
 
-    t3 = datetime.now()
-    plpy.info("kd source table {0}".format(t3-t2))
     return kd_source_table, kd_border_table1, kd_border_table2
-
 
 
 def build_kd_tree(schema_madlib, source_table, expr_point,
@@ -528,41 +484,6 @@ def build_kd_tree(schema_madlib, source_table, expr_point,
                                      for i, cond in enumerate(clauses[-n_leaves:])])
         return kd_array, case_when_clause, border_cl1, border_cl2
 
-# def get_leaf_list(schema_madlib, expr_point, kd_array, eps, n_features, **kwargs):
-
-#     """
-#     kd-tree is represented as an array or boundary values.
-#     Array index -> tree node mapping:
-#           0
-#       +---^---+
-#       1       2
-#     +-^-+   +-^-+
-#     3   4   5   6
-#     In this case index i will have the following children: 2i+1 and 2i+2
-
-#     """
-
-#     node_q = [0]
-#     section_list = []
-
-#     while node_q:
-#         current_node = node_q.pop()
-
-#         if current_node > len(kd_array)-1:
-#             section_list.append(current_node)
-#         else:
-#             curr_feature = int(floor(log(current_node+1,2))%n_features)
-#             comp_value = expr_point[curr_feature]
-
-#             if comp_value <= kd_array[current_node]+eps:
-#                 node_q.append(2*current_node+1)
-
-#             if comp_value >= kd_array[current_node]-eps:
-#                 node_q.append(2*current_node+2)
-
-#     return section_list
-
-
 
 def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
 
@@ -587,10 +508,6 @@ def dbscan_predict(schema_madlib, dbscan_table, new_point, **kwargs):
         else:
             return None
 
-def pt(leaf_id, in_str):
-
-    plpy.info("leaf {0}: {1}".format(leaf_id, in_str))
-
 def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
 
     SD = kwargs['SD']
@@ -605,16 +522,9 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
     SD['data{0}'.format(leaf_id)] = data
     ret = [[-1,-1],[-1,-1]]
 
-    # plpy.info("expr_points {0} for leaf {1}".format(expr_points, leaf_id))
-    # plpy.info("SD['counter'] {0} for leaf {1}".format(SD['counter{0}'.format(leaf_id)], leaf_id))
-    # plpy.info("SD['data'] {0} for leaf {1}".format(SD['data{0}'.format(leaf_id)], leaf_id))
-
     my_n_rows = n_rows[leaf_id]
 
     if SD['counter{0}'.format(leaf_id)] == my_n_rows:
-
-        tt1 = datetime.now()
-        # pt(leaf_id,"start rtree")
 
         core_counts = {}
         core_lists = {}
@@ -622,56 +532,37 @@ def rtree_transition(state, id_in, expr_points, eps, min_samples, metric, n_rows
         p.dimension = len(expr_points)
         idx = index.Index(properties=p)
         ret = []
-        tt2 = datetime.now()
-        # pt(leaf_id,"init rtree {0}".format(tt2-tt1))
 
         for key1, value1 in data.items():
             idx.add(key1,value1+value1,key1)
 
-        tt3 = datetime.now()
-        # pt(leaf_id,"fill rtree {0}".format(tt3-tt2))
         for key1, value1 in data.items():
 
-            # tt4 = datetime.now()
-            # pt(leaf_id,"start for key {0}".format(key1))
             v1 = []
             v2 = []
             for dim in value1:
                 v1.append(dim-eps)
                 v2.append(dim+eps)
+
+            # Array concat
             v = v1+v2
             hits = idx.intersection(v)
 
-            # tt5 = datetime.now()
-            # pt(leaf_id,"intr key {0} {1}".format(key1, tt5-tt4))
             if key1 not in core_counts:
                 core_counts[key1] = 0
                 core_lists[key1] = []
 
             for key2 in hits:
-                # if key2 != key1:
                 value2 = data[key2]
                 distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
                 if distance <= eps:
                     core_counts[key1] += 1
                     core_lists[key1].append(key2)
 
-            # tt6 = datetime.now()
-            # pt(leaf_id,"hits key {0} {1}".format(key1, tt6-tt5))
-
-        # plpy.info("core_counts {0} for leaf {1}".format(core_counts, leaf_id))
-        # plpy.info("core_lists {0} for leaf {1}".format(core_lists, leaf_id))
-
-        tt7 = datetime.now()
-        # pt(leaf_id,"done rtree {0}".format(tt7-tt3))
-
         for key1, value1 in core_counts.items():
             if value1 >= min_samples:
                 for key2 in core_lists[key1]:
                     ret.append([key1,key2])
-
-        tt8 = datetime.now()
-        # pt(leaf_id,"append {0}".format(tt8-tt7))
 
     return ret
 
@@ -681,107 +572,11 @@ def rtree_merge(state1, state2, **kwargs):
         return state2
     elif not state2:
         return state1
-    """
-    core_dict1 = dict(zip(state1[0], state1[1]))
-    core_dict2 = dict(zip(state2[0], state2[1]))
 
-    for key1, value1 in core_dict1.items():
-
-        if key1 not in core_dict2:
-            core_dict2[key1] = value1
-        else:
-            core_dict2[key1] += value1
-
-    ret = [core_dict2.keys()]
-    ret.append(core_dict2.values())
-
-    return ret
-    """
 
 def rtree_final(state, **kwargs):
 
     return state
-
-"""
-def dbscan_transition_old(state, id_in, expr_points, eps, min_samples, metric, n_rows, leaf_id, **kwargs):
-
-    SD = kwargs['SD']
-    if not state:
-        data = {}
-        SD['counter'] = 0
-    else:
-        data = SD['data']
-
-    data[id_in] = expr_points
-    SD['counter'] = SD['counter']+1
-    ret = [[999],[999]]
-
-    my_n_rows = n_rows[leaf_id]
-
-    if SD['counter'] == my_n_rows:
-        # plpy.info(data)
-
-        cl_ids = {}
-        clid_counter = 1
-        cl_counts = {}
-        eps_counts = {}
-        for key1, value1 in data.items():
-            for key2, value2 in data.items():
-                # plpy.info("{0} {1}".format(key1, key2))
-                if key1 < key2:
-                    distance = sqrt(sum([(a - b) ** 2 for a, b in zip(value1, value2)]))
-                    if distance <= eps:
-
-                        cl_id_k1 = cl_ids[key1] if key1 in cl_ids else None
-                        cl_id_k2 = cl_ids[key2] if key2 in cl_ids else None
-
-                        eps_counts[key1] = 2 if key1 not in eps_counts else eps_counts[key1]+1
-                        eps_counts[key2] = 2 if key2 not in eps_counts else eps_counts[key2]+1
-
-                        if not cl_id_k1 and not cl_id_k2:
-                            cl_ids[key1] = clid_counter
-                            cl_ids[key2] = clid_counter
-                            cl_counts[clid_counter] = 2
-                            clid_counter += 1
-                        elif cl_id_k1 and not cl_id_k2:
-                            cl_ids[key2] = cl_id_k1
-                            cl_counts[cl_ids[key1]] += 1
-                        elif not cl_id_k1 and cl_id_k2:
-                            cl_ids[key1] = cl_id_k2
-                            cl_counts[cl_ids[key2]] += 1
-                        else:
-                            if cl_id_k1 != cl_id_k2:
-                                if cl_counts[cl_id_k1] > cl_counts[cl_id_k2]:
-                                    for chkey,chvalue in cl_ids.items():
-                                        if chvalue == cl_id_k2:
-                                            cl_ids[chkey] = cl_id_k1
-                                    cl_counts[cl_id_k1] += cl_counts[cl_id_k2]
-                                    cl_counts[cl_id_k2] = 0
-                                else:
-                                    for chkey,chvalue in cl_ids.items():
-                                        if chvalue == cl_id_k1:
-                                            cl_ids[chkey] = cl_id_k2
-                                    cl_counts[cl_id_k2] += cl_counts[cl_id_k1]
-                                    cl_counts[cl_id_k1] = 0
-
-                # plpy.info("cl ids {0}".format(cl_ids))
-                # plpy.info("eps_counts {0}".format(eps_counts))
-
-        # plpy.info(eps_counts)
-        if eps_counts:
-            for key1, value1 in eps_counts.items():
-                if value1 < min_samples:
-                    cl_ids.pop(key1)
-
-            # plpy.info("cl ids {0}".format(cl_ids))
-            ret = [cl_ids.keys()]
-            ret.append(cl_ids.values())
-            # plpy.info(ret)
-
-    SD['data'] = data
-
-    return ret
-"""
 
 def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
 
@@ -800,7 +595,6 @@ def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
     my_n_rows = n_rows[gp_segment_id]
 
     if len(data) == my_n_rows:
-        # plpy.info(data)
 
         cl_ids = {}
         clid_counter = 1
@@ -839,10 +633,6 @@ def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
                         cl_counts[cl_id_k2] += cl_counts[cl_id_k1]
                         cl_counts[cl_id_k1] = 0
 
-                # plpy.info("cl ids {0}".format(cl_ids))
-                # plpy.info("cl_counts {0}".format(cl_counts))
-
-        # plpy.info(eps_counts)
         if cl_ids:
 
             running_cl_id = -1
@@ -857,13 +647,10 @@ def dbscan_transition(state, src, dest, n_rows, gp_segment_id, **kwargs):
                     running_cl_id = vertex_cl
                 else:
                     ret.append([running_sf_center,vertex_id])
-            # plpy.info("cl ids {0}".format(cl_ids))
-            # plpy.info(ret)
 
     SD['data'] = data
 
     return ret
-
 
 def dbscan_merge(state1, state2, **kwargs):
 
