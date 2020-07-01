@@ -45,19 +45,23 @@ from rtree.index import Rtree
 
 BRUTE_FORCE = 'brute_force'
 KD_TREE = 'kd_tree'
+DEFAULT_MIN_SAMPLES = 5
+DEFAULT_KD_DEPTH = 3
+DEFAULT_METRIC = 'squared_dist_norm2'
 
 def print_count(table):
 
     plpy.info("{0} count {1}".format(table, plpy.execute("select count(*) from {0}".format(table))[0]['count']))
 
-def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps, min_samples, metric, algorithm, depth, **kwargs):
+def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
+           eps, min_samples, metric, algorithm, depth, **kwargs):
 
     with MinWarning("warning"):
 
-        min_samples = 5 if not min_samples else min_samples
-        metric = 'squared_dist_norm2' if not metric else metric
-        algorithm = 'brute' if not algorithm else algorithm
-        depth = 3 if not depth else depth
+        min_samples = DEFAULT_MIN_SAMPLES if not min_samples else min_samples
+        metric = DEFAULT_METRIC if not metric else metric
+        algorithm = BRUTE_FORCE if not algorithm else algorithm
+        depth = DEFAULT_KD_DEPTH if not depth else depth
 
         algorithm = get_algorithm_name(algorithm, BRUTE_FORCE,
             [BRUTE_FORCE, KD_TREE], 'DBSCAN')
@@ -70,18 +74,15 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
         dist_reach_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__reachable_id__)'
         dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
 
-        # core_points_table = unique_string(desp='core_points_table')
-        core_points_table = 'core_points_table'
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(core_points_table))
-        # core_edge_table = unique_string(desp='core_edge_table')
-        core_edge_table = 'core_edge_table'
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(core_edge_table))
-        # distance_table = unique_string(desp='distance_table')
-        distance_table = 'distance_table'
-        plpy.execute("DROP TABLE IF EXISTS {0}".format(distance_table))
+        core_points_table = unique_string(desp='core_points_table')
+        core_edge_table = unique_string(desp='core_edge_table')
+        distance_table = unique_string(desp='distance_table')
+        plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {3}".format(
+            core_points_table, core_edge_table, distance_table))
 
         if algorithm == KD_TREE:
-            cur_source_table, border_table1, border_table2 = dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
+            cur_source_table, border_table1, border_table2 = dbscan_kd(
+                schema_madlib, source_table, id_column, expr_point, eps, min_samples, depth)
 
             kd_join_clause = "AND __t1__.__leaf_id__ = __t2__.__leaf_id__ "
 
@@ -97,10 +98,16 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 rt_counts_list.append(rt_counts_dict[i])
 
             leaf_id_start = pow(2,depth)-1
-            # rtree_step_table = unique_string(desp='rtree_step_table')
-            rtree_step_table = 'rtree_step_table'
-            t4 = datetime.now()
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(rtree_step_table))
+
+            rtree_step_table = unique_string(desp='rtree_step_table')
+            rt_edge_table = unique_string(desp='rt_edge_table')
+            rt_core_points_table = unique_string(desp='rt_core_points_table')
+            border_core_points_table = unique_string(desp='border_core_points_table')
+            border_edge_table = unique_string(desp='border_edge_table')
+            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}".format(
+                rtree_step_table, rt_edge_table, rt_core_points_table,
+                border_core_points_table))
+
             sql = """
             CREATE TABLE {rtree_step_table} AS
             SELECT __leaf_id__,
@@ -117,11 +124,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             """.format(**locals())
             plpy.execute(sql)
 
-            t5 = datetime.now()
-            plpy.info("rtree_step_table {0}".format(t5-t4))
-
-            rt_edge_table = 'rt_edge_table'
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_edge_table))
             sql = """
             CREATE TABLE {rt_edge_table} AS
             SELECT (unpacked_2d).src AS __src__, (unpacked_2d).dest AS __dest__
@@ -133,11 +135,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             {dist_src_sql}
             """.format(**locals())
             plpy.execute(sql)
-            t6 = datetime.now()
-            plpy.info("rt edge table {0}".format(t6-t5))
 
-            rt_core_points_table = 'rt_core_points_table'
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(rt_core_points_table))
             sql = """
                 CREATE TABLE {rt_core_points_table} AS
                 SELECT DISTINCT(__src__) AS {id_column} FROM {rt_edge_table}
@@ -145,10 +143,8 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             plpy.execute(sql)
 
             # # Start border
-            print_count(border_table1)
-            print_count(border_table2)
             sql = """
-                CREATE TABLE {distance_table} AS
+                CREATE TABLE {border_edge_table} AS
                 SELECT __src__, __dest__ FROM (
                     SELECT  __t1__.{id_column} AS __src__,
                             __t2__.{id_column} AS __dest__,
@@ -159,21 +155,24 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 """.format(**locals())
             plpy.execute(sql)
 
-            t6_1 = datetime.now()
-            plpy.info("border core edge table {0}".format(t6_1-t6))
-
-            border_core_points_table = 'border_core_points_table'
-            plpy.execute("DROP TABLE IF EXISTS {0}".format(border_core_points_table))
             sql = """
                 CREATE TABLE {border_core_points_table} AS
                 SELECT * FROM (
                     SELECT __src__ AS {id_column}, count(*) AS __count__
-                    FROM {distance_table} GROUP BY __src__) q1
+                    FROM {border_edge_table} GROUP BY __src__) q1
                 WHERE __count__ >= {min_samples}
                 {dist_id_sql}
                 """.format(**locals())
             plpy.execute(sql)
 
+            # Build common tables
+            sql = """
+                CREATE TABLE {distance_table} AS
+                SELECT * FROM {rt_edge_table}
+                UNION
+                SELECT * FROM {border_edge_table}
+                """.format(**locals())
+            plpy.execute(sql)
             sql = """
                 CREATE TABLE {core_points_table} AS
                 SELECT {id_column} FROM {border_core_points_table}
@@ -191,17 +190,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
                 WHERE  __t1__.__dest__ = ANY(arr)
                 UNION
                 SELECT __t1__.__src__, __t1__.__dest__
-                FROM {distance_table} __t1__ ,
+                FROM {border_edge_table} __t1__ ,
                     (SELECT array_agg({id_column}) AS arr
                      FROM {core_points_table}) __t2__
                 WHERE  __t1__.__src__ = ANY(arr) AND __t1__.__dest__ = ANY(arr)
                 """.format(**locals())
             plpy.execute(sql)
-            print_count(core_edge_table)
-
-            t7 = datetime.now()
-            plpy.info("rt core points table {0}".format(t7-t6_1))
-            print_count(core_points_table)
 
         else:
             cur_source_table = source_table
@@ -264,7 +258,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             count = plpy.execute(sql)[0]['count']
 
             counts_list = [int(count)]
-            # plpy.info(counts_list)
             seg_id = 0
             group_by_clause = ''
             dist_clause = ''
@@ -283,7 +276,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
             dist_clause = 'DISTRIBUTED BY (seg_id)'
 
         dbscan_step_table = unique_string(desp='dbscan_step_table')
-        dbscan_step_table = 'dbscan_step_table'
         plpy.execute("DROP TABLE IF EXISTS {0}".format(dbscan_step_table))
         sql = """
             CREATE TABLE {dbscan_step_table} AS
@@ -363,6 +355,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point, eps
 
         t10 = datetime.now()
         plpy.info("reach table {0}".format(t10-t9))
+        print_count(reachable_points_table)
         sql = """
             INSERT INTO {output_table}
             SELECT  __reachable_id__ as {id_column},
