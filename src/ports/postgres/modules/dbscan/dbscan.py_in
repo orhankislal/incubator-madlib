@@ -239,6 +239,11 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             """.format(**locals())
             plpy.execute(sql)
 
+        sql = """
+            SELECT count(*) FROM {core_points_table}
+            """.format(**locals())
+        core_count = plpy.execute(sql)[0]['count']
+        _assert(core_count != 0, "DBSCAN: Cannot find any core points/clusters.")
         # Start snowflake creation
         if is_platform_pg():
             sql = """
