@@ -39,7 +39,6 @@ from math import log
 from math import floor
 from math import sqrt
 
-from datetime import datetime
 from rtree import index
 from rtree.index import Rtree
 
@@ -197,13 +196,12 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                 """.format(**locals())
             plpy.execute(sql)
 
-            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}".format(
+            plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}".format(
                 rtree_step_table, rt_edge_table, rt_core_points_table,
-                border_core_points_table, border_edge_table))
+                border_core_points_table, border_edge_table,
+                cur_source_table, kd_border_table1, kd_border_table2))
 
         else:
-            cur_source_table = source_table
-            kd_join_clause = ''
 
             # Calculate pairwise distances
             sql = """
@@ -213,7 +211,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                             __t2__.{id_column} AS __dest__,
                             {schema_madlib}.{metric}(
                                 __t1__.{expr_point}, __t2__.{expr_point}) AS __dist__
-                    FROM {cur_source_table} AS __t1__, {cur_source_table} AS __t2__)q1
+                    FROM {source_table} AS __t1__, {source_table} AS __t2__)q1
                 WHERE __dist__ < {eps}
                 {dist_src_sql}
                 """.format(**locals())
@@ -313,8 +311,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             UPDATE {0}
             SET is_core_point = TRUE
         """.format(output_table))
-
-        t9 = datetime.now()
 
         # Find reachable points
         reachable_points_table = unique_string(desp='reachable_points_table')
