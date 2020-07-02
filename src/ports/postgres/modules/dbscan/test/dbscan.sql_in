@@ -1119,10 +1119,10 @@ SELECT dbscan('dbscan_kd_test_data','dbscan_result','row_id','row_vec',50, 3, 'd
 
 SELECT dbscan('dbscan_kd_test_data','dbscan_result_kd','row_id','row_vec',50, 3, 'dist_norm2', 'kd', 2);
 
-SELECT assert(count(row_id) = 50 AND count(distinct cluster_id) = 11, "Incorrect cluster counts for brute")
+SELECT assert(count(row_id) = 50 AND count(distinct cluster_id) = 11, 'Incorrect cluster counts for brute')
 FROM dbscan_result;
 
-SELECT assert(count(row_id) = 50 AND count(distinct cluster_id) = 11, "Incorrect cluster counts for kd")
+SELECT assert(count(row_id) = 50 AND count(distinct cluster_id) = 11, 'Incorrect cluster counts for kd')
 FROM dbscan_result_kd;
 
 CREATE TABLE temp_result AS
@@ -1130,7 +1130,7 @@ SELECT row_id
 FROM dbscan_result
 WHERE cluster_id = (SELECT cluster_id FROM dbscan_result WHERE row_id = 4);
 
-SELECT assert(count(*) = 6, "Clusters do not match")
+SELECT assert(count(*) = 6, 'Clusters do not match')
 FROM dbscan_result_kd
 WHERE cluster_id = (SELECT cluster_id FROM dbscan_result_kd WHERE row_id = 4)
       AND row_id IN (SELECT row_id FROM temp_result);
