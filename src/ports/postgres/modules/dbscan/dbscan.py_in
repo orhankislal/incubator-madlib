@@ -387,10 +387,9 @@ def dbscan_kd(schema_madlib, source_table, id_column, expr_point, eps, min_sampl
 
     kd_array, case_when_clause, border_cl1, border_cl2 = build_kd_tree(schema_madlib, source_table, expr_point, depth, n_features, eps)
 
-    plpy.info("kd array: {0}".format(kd_array))
-    kd_source_table = 'kd_source_table'
-    kd_border_table1 = 'kd_border_table1'
-    kd_border_table2 = 'kd_border_table2'
+    kd_source_table = unique_string(desp='kd_source_table')
+    kd_border_table1 = unique_string(desp='kd_border_table1')
+    kd_border_table2 = unique_string(desp='kd_border_table2')
 
     dist_leaf_sql = ''  if is_platform_pg() else 'DISTRIBUTED BY (__leaf_id__)'
     plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}".format(kd_source_table, kd_border_table1, kd_border_table2))
