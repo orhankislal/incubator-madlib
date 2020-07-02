@@ -199,7 +199,7 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             plpy.execute("DROP TABLE IF EXISTS {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}".format(
                 rtree_step_table, rt_edge_table, rt_core_points_table,
                 border_core_points_table, border_edge_table,
-                cur_source_table, kd_border_table1, kd_border_table2))
+                cur_source_table, border_table1, border_table2))
 
         else:
 
