@@ -332,9 +332,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
             """.format(**locals())
         plpy.execute(sql)
 
-        t10 = datetime.now()
-        plpy.info("reach table {0}".format(t10-t9))
-        print_count(reachable_points_table)
         sql = """
             INSERT INTO {output_table}
             SELECT  __reachable_id__ as {id_column},
@@ -346,9 +343,6 @@ def dbscan(schema_madlib, source_table, output_table, id_column, expr_point,
                  ON (__src_list__[1] = {id_column})
             """.format(**locals())
         plpy.execute(sql)
-
-        t11 = datetime.now()
-        plpy.info("output table {0}".format(t11-t10))
 
         # Add features of points to the output table to use them for prediction
         sql = """
