@@ -117,31 +117,34 @@ class InputValidator:
         this case is 1 (start the index at 1).
         """
 
+        shapes = []
         if is_minibatched:
-            ind_shape_col = add_postfix(independent_varname, "_shape")
-            query = """
-                SELECT {ind_shape_col} AS shape
-                FROM {table}
-                LIMIT 1
-            """.format(**locals())
-            # This query will fail if an image in independent var does not have the
-            # same number of dimensions as the input_shape.
-            result = plpy.execute(query)[0]['shape']
-            result = result[1:]
+            for i in independent_varname:
+                ind_shape_col = add_postfix(i, "_shape")
+                query = """
+                    SELECT {ind_shape_col} AS shape
+                    FROM {table}
+                    LIMIT 1
+                """.format(**locals())
+                # This query will fail if an image in independent var does not have the
+                # same number of dimensions as the input_shape.
+                result = plpy.execute(query)[0]['shape']
+                shapes.append(result[1:])
         else:
-            array_upper_query = ", ".join("array_upper({0}, {1}) AS n_{2}".format(
-                independent_varname, i+offset, i) for i in range(len(input_shape)))
-            query = """
-                SELECT {0}
-                FROM {1}
-                LIMIT 1
-            """.format(array_upper_query, table)
+            for ind in independent_varname:
+                array_upper_query = ", ".join("array_upper({0}, {1}) AS n_{2}".format(
+                    ind, i+offset, i) for i in range(len(input_shape)))
+                query = """
+                    SELECT {0}
+                    FROM {1}
+                    LIMIT 1
+                """.format(array_upper_query, table)
 
-            # This query will fail if an image in independent var does not have the
-            # same number of dimensions as the input_shape.
-            result = plpy.execute(query)[0]
-
-        _assert(len(result) == len(input_shape),
+                # This query will fail if an image in independent var does not have the
+                # same number of dimensions as the input_shape.
+                result = plpy.execute(query)[0]
+                shapes.append(result)
+        _assert(len(shapes) == len(input_shape),
             "model_keras error: The number of dimensions ({0}) of each image"
             " in model architecture and {1} in {2} ({3}) do not match.".format(
                 len(input_shape), independent_varname, table, len(result)))
@@ -157,7 +160,7 @@ class InputValidator:
                 input_shape_from_table = [result[key_format.format(j)]
                     for j in range(len(input_shape))]
 
-            if result[key_name] != input_shape[i]:
+            if shapes[i] != input_shape[i]:
                 # Construct the shape in independent varname to display
                 # meaningful error msg.
                 plpy.error("model_keras error: Input shape {0} in the model"
@@ -269,8 +272,8 @@ class FitCommonValidator(object):
         self.model_id = model_id
         self.dependent_varname = dependent_varname
         self.independent_varname = independent_varname
-        self.dep_shape_col = add_postfix(dependent_varname, "_shape")
-        self.ind_shape_col = add_postfix(independent_varname, "_shape")
+        # self.dep_shape_col = add_postfix(dependent_varname, "_shape")
+        # self.ind_shape_col = add_postfix(independent_varname, "_shape")
         self.metrics_compute_frequency = metrics_compute_frequency
         self.warm_start = warm_start
         self.num_iterations = num_iterations
@@ -284,7 +287,7 @@ class FitCommonValidator(object):
                 self.output_model_table, "_summary")
         self.accessible_gpus_for_seg = accessible_gpus_for_seg
         self.module_name = module_name
-        self._validate_common_args()
+        # self._validate_common_args()
         if use_gpus:
             InputValidator._validate_gpu_config(self.module_name,
                 self.source_table, self.accessible_gpus_for_seg)
@@ -397,8 +400,7 @@ class FitCommonValidator(object):
 
 class FitInputValidator(FitCommonValidator):
     def __init__(self, source_table, validation_table, output_model_table,
-                 model_arch_table, model_id, dependent_varname,
-                 independent_varname, num_iterations,
+                 model_arch_table, model_id, num_iterations,
                  metrics_compute_frequency, warm_start,
                  use_gpus, accessible_gpus_for_seg, object_table):
 
@@ -408,8 +410,8 @@ class FitInputValidator(FitCommonValidator):
                                                 output_model_table,
                                                 model_arch_table,
                                                 model_id,
-                                                dependent_varname,
-                                                independent_varname,
+                                                None,
+                                                None,
                                                 num_iterations,
                                                 metrics_compute_frequency,
                                                 warm_start,
