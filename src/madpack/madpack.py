@@ -1195,6 +1195,7 @@ def create_install_madlib_sqlfile(args, madpack_cmd):
             else:
                 _print_vers(new_madlib_ver, db_madlib_ver, con_args, schema)
                 if is_rev_gte(get_rev_num(db_madlib_ver), get_rev_num(new_madlib_ver)):
+                    info_(this, get_rev_num(new_madlib_ver), True)
                     info_(this, "Current MADlib version is already up-to-date.", True)
                     return_signal += 1
                 else:
