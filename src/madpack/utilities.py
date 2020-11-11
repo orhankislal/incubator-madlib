@@ -217,7 +217,7 @@ def is_rev_gte(left, right):
         [1, 9, 'rc'] >= [1, 9, 'dev']
         [1, 9, 'rc', 0] >= [1, 9, 'dev', 1]
         [1, 9, 'rc', '1'] >= [1, 9, 'rc', '1']
-        [1, 9, 0, 'patch.1'] >= [1, 9, 0]
+        [1, 9, 0, 'patch.2'] >= [1, 9, 0]
     """
     def all_numeric(l):
         return not l or all(isinstance(i, int) for i in l)
@@ -239,13 +239,13 @@ def is_rev_gte(left, right):
             else:
                 # both are not int
                 if r_e is None:
-                    # [1, 9, 0, 'patch.1'] > [1, 9, 0]
+                    # [1, 9, 0, 'patch.2'] > [1, 9, 0]
                     if 'patch' in l_e:
                         return True
                     # [1, 9, 'dev'] < [1, 9]
                     return False
                 elif l_e is None:
-                    # [1, 9, 0] < [1, 9, 0, 'patch.1']
+                    # [1, 9, 0] < [1, 9, 0, 'patch.2']
                     if 'patch' in r_e:
                         return False
                 else:

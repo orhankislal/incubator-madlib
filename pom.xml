@@ -22,7 +22,7 @@
 
   <groupId>org.apache.madlib</groupId>
   <artifactId>madlib</artifactId>
-  <version>1.17.0+patch.1</version>
+  <version>1.17.0+patch.2</version>
   <packaging>pom</packaging>
 
   <build>
