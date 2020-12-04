@@ -176,17 +176,37 @@ def fit(schema_madlib, source_table, model, model_arch_table,
         # with the function definition
         plpy.error("Object table not specified for function {0} in compile_params".format(custom_fn_list))
 
-    mb_dep_var_cols_sql = ', '.join(["dependent_var_{0}".format(i)
+    # Use the smart interface
+    if (len(columns_dict['mb_dep_var_cols']) <= 5 and
+        len(columns_dict['mb_indep_var_cols']) <= 5):
+
+        dep_var_array = 5 * ["NULL"]
+        indep_var_array = 5 * ["NULL"]
+
+        for counter, var in enumerate(columns_dict['mb_dep_var_cols']):
+            dep_var_array[counter] = "dependent_var_{0}".format(var)
+
+        for counter, var in enumerate(columns_dict['mb_indep_var_cols']):
+            indep_var_array[counter] = "independent_var_{0}".format(var)
+        mb_dep_var_cols_sql = ', '.join(dep_var_array)
+        mb_indep_var_cols_sql = ', '.join(indep_var_array)
+    else:
+
+        mb_dep_var_cols_sql = ', '.join(["dependent_var_{0}".format(i)
                                     for i in columns_dict['mb_dep_var_cols']])
-    mb_indep_var_cols_sql = ', '.join(["independent_var_{0}".format(i)
+        mb_dep_var_cols_sql = "ARRAY[{0}]".format(mb_dep_var_cols_sql)
+
+        mb_indep_var_cols_sql = ', '.join(["independent_var_{0}".format(i)
                                     for i in columns_dict['mb_indep_var_cols']])
+        mb_indep_var_cols_sql = "ARRAY[{0}]".format(mb_indep_var_cols_sql)
+
     dep_shape_cols_sql = ', '.join(columns_dict['dep_shape_cols'])
     ind_shape_cols_sql = ', '.join(columns_dict['ind_shape_cols'])
 
     run_training_iteration = plpy.prepare("""
         SELECT {schema_madlib}.fit_step(
-            ARRAY[{mb_dep_var_cols_sql}],
-            ARRAY[{mb_indep_var_cols_sql}],
+            {mb_dep_var_cols_sql},
+            {mb_indep_var_cols_sql},
             ARRAY[{dep_shape_cols_sql}],
             ARRAY[{ind_shape_cols_sql}],
             $MAD${model_arch}$MAD$::TEXT,
@@ -477,6 +497,34 @@ def update_model(segment_model, prev_serialized_weights):
     model_weights = madlib_keras_serializer.deserialize_as_nd_weights(
         prev_serialized_weights, model_shapes)
     segment_model.set_weights(model_weights)
+
+
+def fit_transition_wide(state, dependent_var1, dependent_var2, dependent_var3,
+                   dependent_var4, dependent_var5, independent_var1,
+                   independent_var2, independent_var3, independent_var4,
+                   independent_var5, dependent_var_shape,
+                   independent_var_shape, model_architecture,
+                   compile_params, fit_params, dist_key, dist_key_mapping,
+                   current_seg_id, segments_per_host, images_per_seg, use_gpus,
+                   accessible_gpus_for_seg, prev_serialized_weights, is_final_iteration=True,
+                   is_multiple_model=False, custom_function_map=None, **kwargs):
+
+    if not independent_var1 or not dependent_var1:
+        return state
+    dependent_var = [dependent_var1, dependent_var2, dependent_var3,
+                        dependent_var4, dependent_var5]
+    independent_var = [independent_var1, independent_var2, independent_var3,
+                        independent_var4, independent_var5]
+
+    dependent_var = [i for i in dependent_var if i is not None]
+    independent_var = [i for i in independent_var if i is not None]
+
+    return fit_transition(state, dependent_var, independent_var, dependent_var_shape,
+                   independent_var_shape, model_architecture,
+                   compile_params, fit_params, dist_key, dist_key_mapping,
+                   current_seg_id, segments_per_host, images_per_seg, use_gpus,
+                   accessible_gpus_for_seg, prev_serialized_weights, is_final_iteration,
+                   is_multiple_model, custom_function_map, **kwargs)
 
 def fit_transition(state, dependent_var, independent_var, dependent_var_shape,
                    independent_var_shape, model_architecture,
@@ -955,7 +1003,7 @@ def internal_keras_eval_transition(state, dependent_var, independent_var,
             state.append(aux_losses[counter])
             state.append(aux_metrics[counter])
     else:
-        state[1] = agg_metric
+        state.append(agg_metric)
     state.append(agg_image_count)
 
     return state
