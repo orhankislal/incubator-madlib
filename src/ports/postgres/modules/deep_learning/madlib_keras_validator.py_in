@@ -262,7 +262,7 @@ class InputValidator:
 class FitCommonValidator(object):
     def __init__(self, source_table, validation_table, output_model_table,
                  model_arch_table, model_id, dependent_varname,
-                 independent_varname, num_iterations,
+                 independent_varname, dep_shape_cols, ind_shape_cols, num_iterations,
                  metrics_compute_frequency, warm_start,
                  use_gpus, accessible_gpus_for_seg, module_name, object_table):
         self.source_table = source_table
@@ -272,8 +272,8 @@ class FitCommonValidator(object):
         self.model_id = model_id
         self.dependent_varname = dependent_varname
         self.independent_varname = independent_varname
-        # self.dep_shape_col = add_postfix(dependent_varname, "_shape")
-        # self.ind_shape_col = add_postfix(independent_varname, "_shape")
+        self.dep_shape_cols = dep_shape_cols
+        self.ind_shape_cols = ind_shape_cols
         self.metrics_compute_frequency = metrics_compute_frequency
         self.warm_start = warm_start
         self.num_iterations = num_iterations
@@ -287,7 +287,7 @@ class FitCommonValidator(object):
                 self.output_model_table, "_summary")
         self.accessible_gpus_for_seg = accessible_gpus_for_seg
         self.module_name = module_name
-        # self._validate_common_args()
+        self._validate_common_args()
         if use_gpus:
             InputValidator._validate_gpu_config(self.module_name,
                 self.source_table, self.accessible_gpus_for_seg)
@@ -302,20 +302,17 @@ class FitCommonValidator(object):
         if self.object_table is not None:
             input_tbl_valid(self.object_table, self.module_name)
             cols_in_tbl_valid(self.object_table, CustomFunctionSchema.col_names, self.module_name)
-        input_tbl_valid(self.source_summary_table, self.module_name,
-                        error_suffix_str="Please ensure that the source table ({0}) "
-                                         "has been preprocessed by "
-                                         "the image preprocessor.".format(self.source_table))
-        cols_in_tbl_valid(self.source_summary_table, [CLASS_VALUES_COLNAME,
-            NORMALIZING_CONST_COLNAME, DEPENDENT_VARTYPE_COLNAME,
+
+        cols_in_tbl_valid(self.source_summary_table,
+            [NORMALIZING_CONST_COLNAME, DEPENDENT_VARTYPE_COLNAME,
             'dependent_varname', 'independent_varname'], self.module_name)
         if not is_platform_pg():
             cols_in_tbl_valid(self.source_table, [DISTRIBUTION_KEY_COLNAME], self.module_name)
 
         # Source table and validation tables must have the same schema
         self._validate_input_table(self.source_table)
-        validate_bytea_var_for_minibatch(self.source_table,
-                                         self.dependent_varname)
+        for i in self.dependent_varname:
+            validate_bytea_var_for_minibatch(self.source_table, i)
 
         self._validate_validation_table()
         if self.warm_start:
@@ -326,40 +323,44 @@ class FitCommonValidator(object):
             output_tbl_valid(self.output_summary_model_table, self.module_name)
 
     def _validate_input_table(self, table):
-        _assert(is_var_valid(table, self.independent_varname),
+        for name in self.independent_varname:
+            _assert(is_var_valid(table, name),
                 "{module_name}: invalid independent_varname "
                 "('{independent_varname}') for table ({table}). "
                 "Please ensure that the input table ({table}) "
                 "has been preprocessed by the image preprocessor.".format(
                     module_name=self.module_name,
-                    independent_varname=self.independent_varname,
+                    independent_varname=name,
                     table=table))
 
-        _assert(is_var_valid(table, self.dependent_varname),
+        for name in self.dependent_varname:
+            _assert(is_var_valid(table, name),
                 "{module_name}: invalid dependent_varname "
                 "('{dependent_varname}') for table ({table}). "
                 "Please ensure that the input table ({table}) "
                 "has been preprocessed by the image preprocessor.".format(
                     module_name=self.module_name,
-                    dependent_varname=self.dependent_varname,
+                    dependent_varname=name,
                     table=table))
 
-        _assert(is_var_valid(table, self.ind_shape_col),
+        for name in self.ind_shape_cols:
+            _assert(is_var_valid(table, name),
                 "{module_name}: invalid independent_var_shape "
                 "('{ind_shape_col}') for table ({table}). "
                 "Please ensure that the input table ({table}) "
                 "has been preprocessed by the image preprocessor.".format(
                     module_name=self.module_name,
-                    ind_shape_col=self.ind_shape_col,
+                    ind_shape_col=name,
                     table=table))
 
-        _assert(is_var_valid(table, self.dep_shape_col),
+        for name in self.dep_shape_cols:
+            _assert(is_var_valid(table, name),
                 "{module_name}: invalid dependent_var_shape "
                 "('{dep_shape_col}') for table ({table}). "
                 "Please ensure that the input table ({table}) "
                 "has been preprocessed by the image preprocessor.".format(
                     module_name=self.module_name,
-                    dep_shape_col=self.dep_shape_col,
+                    dep_shape_col=name,
                     table=table))
 
         if not is_platform_pg():
@@ -381,12 +382,13 @@ class FitCommonValidator(object):
         if self.validation_table and self.validation_table.strip() != '':
             input_tbl_valid(self.validation_table, self.module_name)
             self._validate_input_table(self.validation_table)
-            dependent_vartype = get_expr_type(self.dependent_varname,
-                                              self.validation_table)
-            _assert(dependent_vartype == 'bytea',
-                    "Dependent variable column {0} in validation table {1} should be "
-                    "a bytea and also one hot encoded.".format(
-                        self.dependent_varname, self.validation_table))
+            for i in self.dependent_varname:
+                dependent_vartype = get_expr_type(i,
+                                                  self.validation_table)
+                _assert(dependent_vartype == 'bytea',
+                        "Dependent variable column {0} in validation table {1} should be "
+                        "a bytea and also one hot encoded.".format(
+                            i, self.validation_table))
 
 
     def validate_input_shapes(self, input_shape):
@@ -400,7 +402,8 @@ class FitCommonValidator(object):
 
 class FitInputValidator(FitCommonValidator):
     def __init__(self, source_table, validation_table, output_model_table,
-                 model_arch_table, model_id, num_iterations,
+                 model_arch_table, model_id, dependent_varname,
+                 independent_varname, dep_shape_cols, ind_shape_cols, num_iterations,
                  metrics_compute_frequency, warm_start,
                  use_gpus, accessible_gpus_for_seg, object_table):
 
@@ -410,8 +413,10 @@ class FitInputValidator(FitCommonValidator):
                                                 output_model_table,
                                                 model_arch_table,
                                                 model_id,
-                                                None,
-                                                None,
+                                                dependent_varname,
+                                                independent_varname,
+                                                dep_shape_cols,
+                                                ind_shape_cols,
                                                 num_iterations,
                                                 metrics_compute_frequency,
                                                 warm_start,

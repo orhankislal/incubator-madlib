@@ -86,18 +86,20 @@ class InputDataPreprocessorDL(object):
             If necessary, NULLs are padded to dependent_levels list.
         """
         if self.dependent_levels:
-            # if any class level was NULL in sql, that would show up as
-            # None in self.dependent_levels. Replace all None with NULL
-            # in the list.
-            for i in range(len(self.dependent_levels)):
-                self.dependent_levels[i] = ['NULL' if level is None else level
-                    for level in self.dependent_levels[i]]
-            self._validate_num_classes()
-            # Try computing padding_size after running all necessary validations.
             self.padding_size = []
-            if self.num_classes:
-                for i in range(len(self.dependent_levels)):
-                    self.padding_size[i] = self.num_classes - len(self.dependent_levels[i])
+            for i in range(len(self.dependent_levels)):
+                tmp_levels = self.dependent_levels[i]
+                if tmp_levels:
+                # if any class level was NULL in sql, that would show up as
+                # None in self.dependent_levels. Replace all None with NULL
+                # in the list.
+                    self.dependent_levels[i] = ['NULL' if level is None else level
+                        for level in tmp_levels]
+                    self._validate_num_classes()
+                    # Try computing padding_size after running all necessary validations.
+
+                    if self.num_classes:
+                        self.padding_size.append(self.num_classes[i] - len(self.dependent_levels[i]))
 
     def _validate_num_classes(self):
         if self.num_classes is not None and \
@@ -161,27 +163,32 @@ class InputDataPreprocessorDL(object):
             tmp_type = self.dependent_vartype[i]
             tmp_varname = self.dependent_varname[i]
             tmp_levels = self.dependent_levels[i]
-            if self.num_classes:
-                tmp_padding = self.padding_size[i]
             if is_valid_psql_type(tmp_type, NUMERIC | ONLY_ARRAY):
-                return_sql.append("{0}::{1}[]".format(self.dependent_varname, SMALLINT_SQL_TYPE))
+                return_sql.append("{0}::{1}[]".format(tmp_varname, SMALLINT_SQL_TYPE))
+            elif is_valid_psql_type(tmp_type, NUMERIC):
+                return_sql.append("ARRAY[{0}]::{1}[] AS {2}".format(tmp_varname, SMALLINT_SQL_TYPE, tmp_varname))
 
-            # For DL use case, we want to allow NULL as a valid class value,
-            # so the query must have 'IS NOT DISTINCT FROM' instead of '='
-            # like in the generic get_one_hot_encoded_expr() defined in
-            # db_utils.py_in. We also have this optional 'num_classes' param
-            # that affects the logic of 1-hot encoding. Since this is very
-            # specific to input_preprocessor_dl for now, let's keep
-            # it here instead of refactoring it out to a generic helper function.
-            one_hot_encoded_expr = ["({0}) IS NOT DISTINCT FROM {1}".format(
-                tmp_varname, c) for c in tmp_levels]
-            if self.num_classes:
-                one_hot_encoded_expr.extend(['false'
-                    for i in range(tmp_padding)])
-            # In psql, we can't directly convert boolean to smallint, so we firstly
-            # convert it to integer and then cast to smallint
-            return_sql.append('ARRAY[{0}]::INTEGER[]::{1}[] AS {2}'.format(
-                ', '.join(one_hot_encoded_expr), SMALLINT_SQL_TYPE, tmp_varname))
+            else:
+                if self.num_classes:
+                    tmp_padding = self.padding_size[i]
+
+                # For DL use case, we want to allow NULL as a valid class value,
+                # so the query must have 'IS NOT DISTINCT FROM' instead of '='
+                # like in the generic get_one_hot_encoded_expr() defined in
+                # db_utils.py_in. We also have this optional 'num_classes' param
+                # that affects the logic of 1-hot encoding. Since this is very
+                # specific to input_preprocessor_dl for now, let's keep
+                # it here instead of refactoring it out to a generic helper function.
+
+                one_hot_encoded_expr = ["({0}) IS NOT DISTINCT FROM {1}".format(
+                    tmp_varname, c) for c in tmp_levels]
+                if self.num_classes:
+                    one_hot_encoded_expr.extend(['false'
+                        for i in range(tmp_padding)])
+                # In psql, we can't directly convert boolean to smallint, so we firstly
+                # convert it to integer and then cast to smallint
+                return_sql.append('ARRAY[{0}]::INTEGER[]::{1}[] AS {2}'.format(
+                    ', '.join(one_hot_encoded_expr), SMALLINT_SQL_TYPE, tmp_varname))
         return_sql = ', '.join(return_sql)
         return return_sql
 
@@ -201,13 +208,22 @@ class InputDataPreprocessorDL(object):
 
     def _get_dependent_var_shape(self):
 
+        shape = []
         if self.num_classes:
-            shape = [[self.num_classes]]
+            plpy.info("were num cl")
+            plpy.info(self.num_classes)
+            shape = [self.num_classes]
         elif self.dependent_levels:
-            shape = [[len(dep)] for dep in self.dependent_levels]
+            plpy.info(self.dependent_levels)
+            for level in self.dependent_levels:
+                plpy.info(level)
+                shape.append([len(level)])
         else:
-            return self._get_var_shape(self.independent_name)
+            for name in self.independent_name:
+                shape.append(self._get_var_shape(name))
+        plpy.info(shape)
         return shape
+
 
     def input_preprocessor_dl(self, order_by_random=True):
         """
@@ -269,24 +285,24 @@ class InputDataPreprocessorDL(object):
 
         for i,j in zip(self.independent_varname,ind_shape):
             concat_sql.append("""
-                {self.schema_madlib}.agg_array_concat(ARRAY[{i}_norm::{float32}[]]) AS {x}_{i}
+                {self.schema_madlib}.agg_array_concat(ARRAY[{i}_norm::{float32}[]]) AS {i}
                 """.format(**locals()))
             shape_sql.append("""
                 ARRAY[count, {j}]::SMALLINT[] AS {i}_shape
                 """.format(**locals()))
             bytea_sql.append("""
-                {self.schema_madlib}.array_to_bytea({x}_{i}) AS {x}_{i}
+                {self.schema_madlib}.array_to_bytea({i}) AS {i}
                 """.format(**locals()))
 
         for i,j in zip(self.dependent_varname, dep_shape):
             concat_sql.append("""
-                {self.schema_madlib}.agg_array_concat(ARRAY[{i}]) AS {y}_{i}
+                {self.schema_madlib}.agg_array_concat(ARRAY[{i}]) AS {i}
                 """.format(**locals()))
             shape_sql.append("""
                 ARRAY[count, {j}]::SMALLINT[] AS {i}_shape
                 """.format(**locals()))
             bytea_sql.append("""
-                {self.schema_madlib}.array_to_bytea({y}_{i}) AS {y}_{i}
+                {self.schema_madlib}.array_to_bytea({i}) AS {i}
                 """.format(**locals()))
 
         concat_sql = ', '.join(concat_sql)
@@ -335,7 +351,6 @@ class InputDataPreprocessorDL(object):
                     {one_hot_dep_var_array_expr}
                 FROM {self.source_table}
             """.format(**locals())
-
             plpy.execute(one_hot_sql)
 
             self.buffer_size = self._get_buffer_size(1)
@@ -640,14 +655,16 @@ class InputDataPreprocessorDL(object):
         class_level_str='NULL::{0}[] AS {1}_{2}'.format(self.dependent_vartype[0], self.dependent_varname[0], CLASS_VALUES_COLNAME)
         class_level_list = []
         local_num_classes = []
-        if self.dependent_levels:
+        plpy.info("start summary")
 
-            for i in range(len(self.dependent_vartype)):
+        for i in range(len(self.dependent_vartype)):
+            if self.dependent_levels[i]:
                 # Update dependent_levels to include NULL when
                 # num_classes > len(self.dependent_levels)
                 if self.num_classes:
+                    plpy.info(self.dependent_levels[i])
                     self.dependent_levels[i].extend(['NULL'
-                        for i in range(self.padding_size[i])])
+                        for j in range(self.padding_size[i])])
                 else:
                     local_num_classes.append(str(len(self.dependent_levels[i])))
                 class_level_str=py_list_to_sql_string(
@@ -656,10 +673,12 @@ class InputDataPreprocessorDL(object):
                 class_level_list.append("{0} AS {1}_{2}".format(class_level_str,
                                                                 self.dependent_varname[i],
                                                                 CLASS_VALUES_COLNAME))
-            class_level_str = ', '.join(class_level_list)
+            class_level_str = ', '.join(class_level_list) if class_level_list else class_level_str
         local_num_classes = ', '.join(local_num_classes)
         if self.num_classes is None:
             self.num_classes = "ARRAY[{0}]::INTEGER[]".format(local_num_classes)
+        else:
+            self.num_classes = "ARRAY{0}".format(self.num_classes)
         # if self.num_classes is None:
         #     self.num_classes = 'NULL::INTEGER'
         query = """
@@ -707,6 +726,7 @@ class InputDataPreprocessorDL(object):
         for i in self.independent_varname:
             self.independent_vartype.append(get_expr_type(i,
                                                           self.source_table))
+
         self.dependent_vartype = []
 
         for i in self.dependent_varname:
@@ -750,18 +770,16 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         self.training_preprocessor_table = training_preprocessor_table
         summary_table = self._validate_and_process_training_preprocessor_table()
         num_classes = summary_table[NUM_CLASSES_COLNAME]
+        plpy.info(num_classes)
         InputDataPreprocessorDL.__init__(
             self, schema_madlib, source_table, output_table,
             dependent_varname, independent_varname, buffer_size,
             summary_table[NORMALIZING_CONST_COLNAME], num_classes,
             distribution_rules, self.module_name)
         # Update value of dependent_levels from training batch summary table.
-        self.dependent_levels = self._get_dependent_levels(
-            summary_table[CLASS_VALUES_COLNAME],
-            summary_table[DEPENDENT_VARTYPE_COLNAME])
+        self.dependent_levels = self._get_dependent_levels(summary_table)
 
-    def _get_dependent_levels(self, training_dependent_levels,
-                              training_dependent_vartype):
+    def _get_dependent_levels(self, summary_table):
         """
             Return the distinct dependent levels to be considered for
             one-hot encoding the dependent var. This is inferred from
@@ -773,10 +791,12 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         """
         # Validate that dep var type is exactly the same as what was in
         # trainig_preprocessor_table's input.
-        _assert(self.dependent_vartype == training_dependent_vartype,
-            "{0}: the dependent variable's type in {1} must be {2}.".format(
-                self.module_name, self.source_table,
-                training_dependent_vartype))
+        training_dependent_vartype = summary_table[DEPENDENT_VARTYPE_COLNAME]
+
+        # _assert(self.dependent_vartype[0] == training_dependent_vartype[0],
+        #     "{0}: the dependent variable's type in {1} must be {2}.".format(
+        #         self.module_name, self.source_table,
+        #         training_dependent_vartype))
         # training_dependent_levels is the class_values column from the
         # training batch summary table. This already has the padding with
         # NULLs in it based on num_classes that was provided to
@@ -784,26 +804,33 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         # to strip out those trailing NULLs from class_values, since
         # they will anyway get added later in
         # InputDataPreprocessorDL._set_one_hot_encoding_variables.
-        dependent_levels = strip_trailing_nulls_from_class_values(
-            training_dependent_levels)
-        if training_dependent_levels:
-            dependent_levels_val_data = self.get_distinct_dependent_levels(
-                self.source_table, self.dependent_varname,
-                self.dependent_vartype)
-            unquoted_dependent_levels_val_data = [strip_end_quotes(level, "'")
-                                                  for level in dependent_levels_val_data]
-            # Assert to check if the class values in validation data is a subset
-            # of the class values in training data.
-            _assert(set(unquoted_dependent_levels_val_data).issubset(set(dependent_levels)),
-                    "{0}: the class values in {1} ({2}) should be a "
-                    "subset of class values in {3} ({4})".format(
-                        self.module_name, self.source_table,
-                        unquoted_dependent_levels_val_data,
-                        self.training_preprocessor_table, dependent_levels))
-        if is_psql_char_type(self.dependent_vartype):
-            dependent_levels = [quote_literal(level) if level is not None else level
-                                for level in dependent_levels]
-        return dependent_levels
+        # dependent_levels = strip_trailing_nulls_from_class_values(
+        #     training_dependent_levels)
+        dependent_levels_list = []
+        for  counter, dep in enumerate(self.dependent_varname):
+
+            training_dependent_levels = summary_table["{0}_class_values".format(dep)]
+            dependent_levels = strip_trailing_nulls_from_class_values(
+                training_dependent_levels)
+            if training_dependent_levels:
+                dependent_levels_val_data = self.get_distinct_dependent_levels(
+                    self.source_table, dep, self.dependent_vartype[counter])
+                unquoted_dependent_levels_val_data = [strip_end_quotes(level, "'")
+                                                      for level in dependent_levels_val_data]
+                # Assert to check if the class values in validation data is a subset
+                # of the class values in training data.
+                _assert(set(unquoted_dependent_levels_val_data).issubset(set(dependent_levels)),
+                        "{0}: the class values in {1} ({2}) should be a "
+                        "subset of class values in {3} ({4})".format(
+                            self.module_name, self.source_table,
+                            unquoted_dependent_levels_val_data,
+                            self.training_preprocessor_table, dependent_levels))
+            if is_psql_char_type(self.dependent_vartype[counter]):
+                dependent_levels_list.append([quote_literal(level) if level is not None else level
+                                    for level in dependent_levels])
+            else:
+                dependent_levels_list.append(None)
+        return dependent_levels_list
 
     def _validate_and_process_training_preprocessor_table(self):
         """
@@ -826,18 +853,18 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
             "{0}: Expected column {1} in {2}.".format(
                 self.module_name, NORMALIZING_CONST_COLNAME,
                 training_summary_table))
-        _assert(CLASS_VALUES_COLNAME in summary_table,
-            "{0}: Expected column {1} in {2}.".format(
-                self.module_name, CLASS_VALUES_COLNAME,
-                training_summary_table))
+        # _assert(CLASS_VALUES_COLNAME in summary_table,
+        #     "{0}: Expected column {1} in {2}.".format(
+        #         self.module_name, CLASS_VALUES_COLNAME,
+        #         training_summary_table))
         _assert(NUM_CLASSES_COLNAME in summary_table,
             "{0}: Expected column {1} in {2}.".format(
                 self.module_name, NUM_CLASSES_COLNAME,
                 training_summary_table))
-        _assert(DEPENDENT_VARTYPE_COLNAME in summary_table,
-            "{0}: Expected column {1} in {2}.".format(
-                self.module_name, DEPENDENT_VARTYPE_COLNAME,
-                training_summary_table))
+        # _assert(DEPENDENT_VARTYPE_COLNAME in summary_table,
+        #     "{0}: Expected column {1} in {2}.".format(
+        #         self.module_name, DEPENDENT_VARTYPE_COLNAME,
+        #         training_summary_table))
         return summary_table
 
     def validation_preprocessor_dl(self):
