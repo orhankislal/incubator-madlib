@@ -161,8 +161,8 @@ def fit(schema_madlib, source_table, model, model_arch_table,
     validation_metrics = []; validation_loss = []
 
     # Prepare the SQL for running distributed training via UDA
-    compile_params_to_pass = "$madlib$" + compile_params + "$madlib$"
-    fit_params_to_pass = "$madlib$" + fit_params + "$madlib$"
+    compile_params_to_pass = quote_literal(compile_params)
+    fit_params_to_pass = quote_literal(fit_params)
     custom_function_map = None
 
     # If the object_table exists, we read the list of custom
@@ -287,7 +287,7 @@ def fit(schema_madlib, source_table, model, model_arch_table,
     version = madlib_version(schema_madlib)
     class_values = []
     for i in class_values_colnames:
-        class_values.append("$MAD${0}$MAD$ AS {1}".format(src_summary_dict[i], i))
+        class_values.append("{0} AS {1}".format(quote_literal(src_summary_dict[i]), quote_ident(i)))
     class_values = ' , '.join(class_values)
     class_values_type = src_summary_dict['class_values_type']
     norm_const = src_summary_dict['normalizing_const']
@@ -318,13 +318,13 @@ def fit(schema_madlib, source_table, model, model_arch_table,
         # Must quote the string before inserting to table. Explicitly
         # quoting it here since this can also take a NULL value, done
         # in the else part.
-        validation_table = "$MAD${0}$MAD$".format(validation_table)
+        validation_table = quote_literal(validation_table)
     else:
         validation_metrics = validation_loss = 'NULL'
         validation_metrics_final = validation_loss_final = 'NULL'
         validation_table = 'NULL'
 
-    object_table = "$MAD${0}$MAD$".format(object_table) if object_table is not None else 'NULL'
+    object_table = quote_literal(object_table) if object_table is not None else 'NULL'
     if warm_start:
         plpy.execute("DROP TABLE {0}, {1}".format
                      (model, fit_validator.output_summary_model_table))
@@ -366,7 +366,6 @@ def fit(schema_madlib, source_table, model, model_arch_table,
             {validation_loss}::DOUBLE PRECISION[] AS validation_loss,
             ARRAY{metrics_iters}::INTEGER[] AS metrics_iters
         """.format(output_summary_model_table=fit_validator.output_summary_model_table,
-                   class_values_colname=CLASS_VALUES_COLNAME,
                    dependent_vartype_colname=DEPENDENT_VARTYPE_COLNAME,
                    normalizing_const_colname=NORMALIZING_CONST_COLNAME,
                    FLOAT32_SQL_TYPE = FLOAT32_SQL_TYPE,
@@ -784,7 +783,7 @@ def evaluate(schema_madlib, model_table, test_table, output_table,
     compile_params_query = "SELECT compile_params, metrics_type, object_table FROM {0}".format(model_summary_table)
     res = plpy.execute(compile_params_query)[0]
     metrics_type = res['metrics_type']
-    compile_params = "$madlib$" + res['compile_params'] + "$madlib$"
+    compile_params = quote_literal(res['compile_params'])
     object_table = res['object_table']
     loss_type = get_loss_from_compile_param(res['compile_params'])
     custom_function_map = None
@@ -819,9 +818,9 @@ def validate_evaluate(module_name, model_table, model_summary_table, test_table,
                 error_suffix_str="Please ensure that the test table ({0}) "
                                  "has been preprocessed by "
                                  "the image preprocessor.".format(test_table))
-        cols_in_tbl_valid(test_summary_table, [CLASS_VALUES_COLNAME,
-            NORMALIZING_CONST_COLNAME, DEPENDENT_VARTYPE_COLNAME,
-            DEPENDENT_VARNAME_COLNAME, INDEPENDENT_VARNAME_COLNAME], module_name)
+        cols_in_tbl_valid(test_summary_table, [NORMALIZING_CONST_COLNAME,
+            DEPENDENT_VARTYPE_COLNAME, DEPENDENT_VARNAME_COLNAME,
+            INDEPENDENT_VARNAME_COLNAME], module_name)
 
     input_tbl_valid(model_table, module_name)
     if is_mult_model and not columns_exist_in_table(model_table, ['mst_key']):
@@ -851,12 +850,10 @@ def get_loss_metric_from_keras_eval(schema_madlib, table, columns_dict, compile_
     """
     use_gpus = use_gpus if use_gpus else False
 
-    mb_dep_var_cols_sql = ', '.join(["dependent_var_{0}".format(i)
-                                    for i in columns_dict['mb_dep_var_cols']])
-    mb_indep_var_cols_sql = ', '.join(["independent_var_{0}".format(i)
-                                    for i in columns_dict['mb_indep_var_cols']])
-    dep_shape_cols_sql = ', '.join(columns_dict['dep_shape_cols'])
-    ind_shape_cols_sql = ', '.join(columns_dict['ind_shape_cols'])
+    mb_dep_var_cols_sql = ', '.join([quote_literal(i) for i in columns_dict['mb_dep_var_cols']])
+    mb_indep_var_cols_sql = ', '.join([quote_literal(i) for i in columns_dict['mb_indep_var_cols']])
+    dep_shape_cols_sql = ', '.join([quote_literal(i) for i in columns_dict['dep_shape_cols']])
+    ind_shape_cols_sql = ', '.join([quote_literal(i) for i in columns_dict['ind_shape_cols']])
 
     eval_sql = """
         select ({schema_madlib}.internal_keras_evaluate(

@@ -1105,7 +1105,10 @@ def validate_module_input_params(source_table, output_table, independent_varname
     if other_output_tables:
         for tbl in other_output_tables:
             output_tbl_valid(tbl, module_name)
-
+    if type(independent_varname) is not list:
+        independent_varname = [independent_varname]
+    if type(dependent_varname) is not list:
+        dependent_varname = [dependent_varname]
     for i in independent_varname:
         _assert(is_var_valid(source_table, i),
                 "{module_name} error: invalid independent_varname "

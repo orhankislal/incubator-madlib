@@ -897,7 +897,7 @@ CREATE OR REPLACE FUNCTION MADLIB_SCHEMA.training_preprocessor_dl(
     independent_varname         VARCHAR,
     buffer_size                 INTEGER DEFAULT NULL,
     normalizing_const           REAL DEFAULT 1.0,
-    num_classes                 INTEGER DEFAULT NULL,
+    num_classes                 INTEGER[] DEFAULT NULL,
     distribution_rules          TEXT DEFAULT NULL
 ) RETURNS VOID AS $$
     PythonFunctionBodyOnly(deep_learning, input_data_preprocessor)

@@ -99,7 +99,7 @@ class InputDataPreprocessorDL(object):
                     # Try computing padding_size after running all necessary validations.
 
                     if self.num_classes:
-                        self.padding_size.append(self.num_classes - len(self.dependent_levels[i]))
+                        self.padding_size.append(self.num_classes[i] - len(self.dependent_levels[i]))
 
     def _validate_num_classes(self):
         if self.num_classes is not None and \
@@ -285,24 +285,24 @@ class InputDataPreprocessorDL(object):
 
         for i,j in zip(self.independent_varname,ind_shape):
             concat_sql.append("""
-                {self.schema_madlib}.agg_array_concat(ARRAY[{i}_norm::{float32}[]]) AS {x}_{i}
+                {self.schema_madlib}.agg_array_concat(ARRAY[{i}_norm::{float32}[]]) AS {i}
                 """.format(**locals()))
             shape_sql.append("""
                 ARRAY[count, {j}]::SMALLINT[] AS {i}_shape
                 """.format(**locals()))
             bytea_sql.append("""
-                {self.schema_madlib}.array_to_bytea({x}_{i}) AS {x}_{i}
+                {self.schema_madlib}.array_to_bytea({i}) AS {i}
                 """.format(**locals()))
 
         for i,j in zip(self.dependent_varname, dep_shape):
             concat_sql.append("""
-                {self.schema_madlib}.agg_array_concat(ARRAY[{i}]) AS {y}_{i}
+                {self.schema_madlib}.agg_array_concat(ARRAY[{i}]) AS {i}
                 """.format(**locals()))
             shape_sql.append("""
                 ARRAY[count, {j}]::SMALLINT[] AS {i}_shape
                 """.format(**locals()))
             bytea_sql.append("""
-                {self.schema_madlib}.array_to_bytea({y}_{i}) AS {y}_{i}
+                {self.schema_madlib}.array_to_bytea({i}) AS {i}
                 """.format(**locals()))
 
         concat_sql = ', '.join(concat_sql)
@@ -655,16 +655,16 @@ class InputDataPreprocessorDL(object):
         class_level_str='NULL::{0}[] AS {1}_{2}'.format(self.dependent_vartype[0], self.dependent_varname[0], CLASS_VALUES_COLNAME)
         class_level_list = []
         local_num_classes = []
+        plpy.info("start summary")
 
         for i in range(len(self.dependent_vartype)):
             if self.dependent_levels[i]:
                 # Update dependent_levels to include NULL when
                 # num_classes > len(self.dependent_levels)
-                plpy.info(i)
                 if self.num_classes:
                     plpy.info(self.dependent_levels[i])
                     self.dependent_levels[i].extend(['NULL'
-                        for i in range(self.padding_size[i])])
+                        for j in range(self.padding_size[i])])
                 else:
                     local_num_classes.append(str(len(self.dependent_levels[i])))
                 class_level_str=py_list_to_sql_string(
