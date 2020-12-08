@@ -210,18 +210,13 @@ class InputDataPreprocessorDL(object):
 
         shape = []
         if self.num_classes:
-            plpy.info("were num cl")
-            plpy.info(self.num_classes)
             shape = [self.num_classes]
         elif self.dependent_levels:
-            plpy.info(self.dependent_levels)
             for level in self.dependent_levels:
-                plpy.info(level)
                 shape.append([len(level)])
         else:
             for name in self.independent_name:
                 shape.append(self._get_var_shape(name))
-        plpy.info(shape)
         return shape
 
 

@@ -41,7 +41,7 @@ def get_input_shape(model_arch):
     for i in arch_layers:
         if 'batch_input_shape' in i['config']:
             shapes.append(i['config']['batch_input_shape'][1:])
-    if shapes is not None:
+    if shapes:
         return shapes
     plpy.error('Unable to get input shape from model architecture.')
 
