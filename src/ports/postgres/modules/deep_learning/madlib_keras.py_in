@@ -271,7 +271,7 @@ def fit(schema_madlib, source_table, model, model_arch_table,
             if validation_set_provided:
                 # Compute loss/accuracy for validation data.
                 val_compute_out = compute_loss_and_metrics(
-                    schema_madlib, validation_table, compile_params_to_pass,
+                    schema_madlib, validation_table, columns_dict, compile_params_to_pass,
                     model_arch, serialized_weights, use_gpus, accessible_gpus_for_seg,
                     seg_ids_val, images_per_seg_val, validation_metrics,
                     validation_loss, i, is_final_iteration, custom_function_map)
@@ -503,7 +503,6 @@ def update_model(segment_model, prev_serialized_weights):
         prev_serialized_weights, model_shapes)
     segment_model.set_weights(model_weights)
 
-
 def fit_transition_wide(state, dependent_var1, dependent_var2, dependent_var3,
                    dependent_var4, dependent_var5, independent_var1,
                    independent_var2, independent_var3, independent_var4,
@@ -563,6 +562,7 @@ def fit_transition(state, dependent_var, independent_var, dependent_var_shape,
                                                   segments_per_host,
                                                   model_architecture, compile_params,
                                                   custom_function_map)
+
     if not state:
         agg_image_count = 0
         set_model_weights(segment_model, prev_serialized_weights)
@@ -573,10 +573,9 @@ def fit_transition(state, dependent_var, independent_var, dependent_var_shape,
     y_train = []
     # Prepare the data
     for counter, shape in enumerate(independent_var_shape):
-
         x_train.append(np_array_float32(independent_var[counter], shape))
-    for counter, shape in enumerate(dependent_var_shape):
 
+    for counter, shape in enumerate(dependent_var_shape):
         y_train.append(np_array_int16(dependent_var[counter], shape))
 
     # Fit segment model on data
@@ -958,7 +957,6 @@ def internal_keras_eval_transition(state, dependent_var, independent_var,
 
         x_val.append(np_array_float32(independent_var[counter], shape))
     for counter, shape in enumerate(dependent_var_shape):
-
         y_val.append(np_array_int16(dependent_var[counter], shape))
 
     image_count = len(y_val[0])

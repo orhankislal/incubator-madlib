@@ -165,12 +165,7 @@ class InputDataPreprocessorDL(object):
             tmp_levels = self.dependent_levels[i]
             if is_valid_psql_type(tmp_type, NUMERIC | ONLY_ARRAY):
                 return_sql.append("{0}::{1}[]".format(tmp_varname, SMALLINT_SQL_TYPE))
-            elif is_valid_psql_type(tmp_type, NUMERIC):
-                return_sql.append("ARRAY[{0}]::{1}[] AS {2}".format(tmp_varname, SMALLINT_SQL_TYPE, tmp_varname))
-
             else:
-                if self.num_classes:
-                    tmp_padding = self.padding_size[i]
 
                 # For DL use case, we want to allow NULL as a valid class value,
                 # so the query must have 'IS NOT DISTINCT FROM' instead of '='
@@ -182,9 +177,9 @@ class InputDataPreprocessorDL(object):
 
                 one_hot_encoded_expr = ["({0}) IS NOT DISTINCT FROM {1}".format(
                     tmp_varname, c) for c in tmp_levels]
-                if self.num_classes:
+                if self.padding_size:
                     one_hot_encoded_expr.extend(['false'
-                        for i in range(tmp_padding)])
+                        for i in range(self.padding_size[i])])
                 # In psql, we can't directly convert boolean to smallint, so we firstly
                 # convert it to integer and then cast to smallint
                 return_sql.append('ARRAY[{0}]::INTEGER[]::{1}[] AS {2}'.format(
@@ -650,14 +645,12 @@ class InputDataPreprocessorDL(object):
         class_level_str='NULL::{0}[] AS {1}_{2}'.format(self.dependent_vartype[0], self.dependent_varname[0], CLASS_VALUES_COLNAME)
         class_level_list = []
         local_num_classes = []
-        plpy.info("start summary")
 
         for i in range(len(self.dependent_vartype)):
             if self.dependent_levels[i]:
                 # Update dependent_levels to include NULL when
                 # num_classes > len(self.dependent_levels)
                 if self.num_classes:
-                    plpy.info(self.dependent_levels[i])
                     self.dependent_levels[i].extend(['NULL'
                         for j in range(self.padding_size[i])])
                 else:
@@ -765,7 +758,6 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         self.training_preprocessor_table = training_preprocessor_table
         summary_table = self._validate_and_process_training_preprocessor_table()
         num_classes = summary_table[NUM_CLASSES_COLNAME]
-        plpy.info(num_classes)
         InputDataPreprocessorDL.__init__(
             self, schema_madlib, source_table, output_table,
             dependent_varname, independent_varname, buffer_size,
@@ -788,10 +780,6 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         # trainig_preprocessor_table's input.
         training_dependent_vartype = summary_table[DEPENDENT_VARTYPE_COLNAME]
 
-        # _assert(self.dependent_vartype[0] == training_dependent_vartype[0],
-        #     "{0}: the dependent variable's type in {1} must be {2}.".format(
-        #         self.module_name, self.source_table,
-        #         training_dependent_vartype))
         # training_dependent_levels is the class_values column from the
         # training batch summary table. This already has the padding with
         # NULLs in it based on num_classes that was provided to
@@ -799,8 +787,7 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         # to strip out those trailing NULLs from class_values, since
         # they will anyway get added later in
         # InputDataPreprocessorDL._set_one_hot_encoding_variables.
-        # dependent_levels = strip_trailing_nulls_from_class_values(
-        #     training_dependent_levels)
+
         dependent_levels_list = []
         for  counter, dep in enumerate(self.dependent_varname):
 
@@ -824,7 +811,7 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
                 dependent_levels_list.append([quote_literal(level) if level is not None else level
                                     for level in dependent_levels])
             else:
-                dependent_levels_list.append(None)
+                dependent_levels_list.append(dependent_levels)
         return dependent_levels_list
 
     def _validate_and_process_training_preprocessor_table(self):
