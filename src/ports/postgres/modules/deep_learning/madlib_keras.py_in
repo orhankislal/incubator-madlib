@@ -291,16 +291,19 @@ def fit(schema_madlib, source_table, model, model_arch_table,
     end_training_time = datetime.datetime.now()
 
     version = madlib_version(schema_madlib)
-    class_values = []
-    for i in class_values_colnames:
-        class_values.append("{0} AS {1}".format(quote_literal(src_summary_dict[i]), quote_ident(i)))
-    class_values = ' , '.join(class_values)
+    # class_values = []
+    # for i in class_values_colnames:
+    #     class_values.append("ARRAY{0} AS {1}".format(src_summary_dict[i], quote_ident(i)))
+    # class_values = ' , '.join(class_values)
     class_values_type = src_summary_dict['class_values_type']
     norm_const = src_summary_dict['normalizing_const']
     norm_const_type = src_summary_dict['norm_const_type']
     dep_vartype = src_summary_dict['dependent_vartype']
     dependent_varname = src_summary_dict['dependent_varname']
     independent_varname = src_summary_dict['independent_varname']
+
+    dep_name_list = ', '.join([quote_literal(i) for i in dependent_varname])
+    ind_name_list = ', '.join([quote_literal(i) for i in independent_varname])
 
     # Define some constants to be inserted into the summary table.
     model_type = "madlib_keras"
@@ -339,8 +342,8 @@ def fit(schema_madlib, source_table, model, model_arch_table,
         SELECT
             $MAD${source_table}$MAD$::TEXT AS source_table,
             $MAD${model}$MAD$::TEXT AS model,
-            $MAD${dependent_varname}$MAD$::TEXT AS dependent_varname,
-            $MAD${independent_varname}$MAD$::TEXT AS independent_varname,
+            ARRAY[{dep_name_list}]::TEXT[] AS dependent_varname,
+            ARRAY[{ind_name_list}]::TEXT[] AS independent_varname,
             $MAD${model_arch_table}$MAD$::TEXT AS model_arch_table,
             {model_id}::INTEGER AS {model_id_colname},
             $1 AS compile_params,
@@ -357,9 +360,8 @@ def fit(schema_madlib, source_table, model, model_arch_table,
             '{end_training_time}'::TIMESTAMP AS end_training_time,
             $5 AS metrics_elapsed_time,
             '{version}'::TEXT AS madlib_version,
-            {num_classes}::INTEGER AS num_classes,
-            {class_values},
-            $MAD${dep_vartype}$MAD$::TEXT AS {dependent_vartype_colname},
+            ARRAY{num_classes}::INTEGER[] AS num_classes,
+            ARRAY{dep_vartype}::TEXT[] AS {dependent_vartype_colname},
             {norm_const}::{FLOAT32_SQL_TYPE} AS {normalizing_const_colname},
             {metrics_type}::TEXT[] AS metrics_type,
             {training_metrics_final}::DOUBLE PRECISION AS training_metrics_final,
@@ -748,7 +750,6 @@ def fit_final(state, **kwargs):
     weights /= image_count
     return madlib_keras_serializer.serialize_nd_weights(weights)
 
-
 def evaluate(schema_madlib, model_table, test_table, output_table,
              use_gpus, mst_key, **kwargs):
 
@@ -782,8 +783,19 @@ def evaluate(schema_madlib, model_table, test_table, output_table,
     model_arch = res['model_arch']
 
     input_shape = get_input_shape(model_arch)
+
+    model_summary_dict = get_source_summary_table_dict(model_summary_table)
+    # independent_varname = model_summary_dict['independent_varname']
+    # ind_shape_cols = [add_postfix(i, "_shape") for i in independent_varname]
+
+    columns_dict = {}
+    columns_dict['mb_dep_var_cols'] = model_summary_dict['dependent_varname']
+    columns_dict['mb_indep_var_cols'] = model_summary_dict['independent_varname']
+    columns_dict['dep_shape_cols'] = [add_postfix(i, "_shape") for i in columns_dict['mb_dep_var_cols']]
+    columns_dict['ind_shape_cols'] = [add_postfix(i, "_shape") for i in columns_dict['mb_indep_var_cols']]
+
     InputValidator.validate_input_shape(
-        test_table, MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL, input_shape, 2, True)
+        test_table, columns_dict['mb_indep_var_cols'], input_shape, 2, True)
 
     compile_params_query = "SELECT compile_params, metrics_type, object_table FROM {0}".format(model_summary_table)
     res = plpy.execute(compile_params_query)[0]
@@ -796,13 +808,16 @@ def evaluate(schema_madlib, model_table, test_table, output_table,
         custom_fn_list = get_custom_functions_list(res['compile_params'])
         custom_function_map = query_custom_functions_map(object_table, custom_fn_list)
 
-    dist_key_mapping, images_per_seg = get_image_count_per_seg_for_minibatched_data_from_db(test_table)
+    dist_key_mapping, images_per_seg = get_image_count_per_seg_for_minibatched_data_from_db(test_table, columns_dict['ind_shape_cols'][0])
 
-    loss, metric = \
+    loss_metric = \
         get_loss_metric_from_keras_eval(
-            schema_madlib, test_table, compile_params, model_arch,
+            schema_madlib, test_table, columns_dict, compile_params, model_arch,
             model_weights, use_gpus, accessible_gpus_for_seg, dist_key_mapping,
             images_per_seg, custom_function_map=custom_function_map)
+
+    loss = loss_metric[0]
+    metric = loss_metric[1]
 
     if not metrics_type:
         metrics_type = None
@@ -834,10 +849,13 @@ def validate_evaluate(module_name, model_table, model_summary_table, test_table,
         plpy.error("{module_name}: Multi-model needs to pass mst_key".format(**locals()))
     InputValidator.validate_predict_evaluate_tables(
         module_name, model_table, model_summary_table,
-        test_table, output_table, MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL)
+        test_table, output_table)
     _validate_test_summary_tbl()
-    validate_bytea_var_for_minibatch(test_table,
-                                     MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL)
+
+    dependent_varname = plpy.execute("SELECT {0} FROM {1}".format(
+        "dependent_varname", model_summary_table))[0]["dependent_varname"]
+    for i in dependent_varname:
+        validate_bytea_var_for_minibatch(test_table, i)
 
 def get_loss_metric_from_keras_eval(schema_madlib, table, columns_dict, compile_params,
                                     model_arch, serialized_weights, use_gpus,

@@ -64,10 +64,13 @@ def get_num_classes(model_arch):
     """
     arch_layers = _get_layers(model_arch)
     i = len(arch_layers) - 1
+    num_classes = []
     while i >= 0:
         if 'units' in arch_layers[i]['config']:
-            return arch_layers[i]['config']['units']
+            num_classes.append(arch_layers[i]['config']['units'])
         i -= 1
+    if num_classes:
+        return num_classes
     plpy.error('Unable to get number of classes from model architecture.')
 
 def get_model_arch_layers_str(model_arch):

@@ -52,11 +52,12 @@ import keras.metrics as metrics
 class InputValidator:
     @staticmethod
     def validate_predict_evaluate_tables(
-        module_name, model_table, model_summary_table, test_table, output_table,
-        independent_varname):
+        module_name, model_table, model_summary_table, test_table, output_table):
         InputValidator._validate_model_weights_tbl(module_name, model_table)
         InputValidator._validate_model_summary_tbl(
             module_name, model_summary_table)
+        independent_varname = plpy.execute("SELECT {0} FROM {1}".format(
+            "independent_varname", model_summary_table))[0]["independent_varname"]
         InputValidator._validate_test_tbl(
             module_name, test_table, independent_varname)
         output_tbl_valid(output_table, module_name)
@@ -219,19 +220,19 @@ class InputValidator:
     @staticmethod
     def _validate_test_tbl(module_name, test_table, independent_varname):
         input_tbl_valid(test_table, module_name)
-        _assert(is_var_valid(test_table, independent_varname),
+        for i in independent_varname:
+            _assert(is_var_valid(test_table, i),
                 "{module_name} error: invalid independent_varname "
-                "('{independent_varname}') for test table "
+                "('{i}') for test table "
                 "({table}).".format(
                     module_name=module_name,
-                    independent_varname=independent_varname,
+                    i=i,
                     table=test_table))
 
     @staticmethod
     def _validate_model_summary_tbl(module_name, model_summary_table):
         input_tbl_valid(model_summary_table, module_name)
-        cols_to_check_for = [CLASS_VALUES_COLNAME,
-                             DEPENDENT_VARNAME_COLNAME,
+        cols_to_check_for = [DEPENDENT_VARNAME_COLNAME,
                              DEPENDENT_VARTYPE_COLNAME,
                              MODEL_ID_COLNAME,
                              MODEL_ARCH_TABLE_COLNAME,
