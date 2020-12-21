@@ -174,7 +174,6 @@ class InputDataPreprocessorDL(object):
                 # that affects the logic of 1-hot encoding. Since this is very
                 # specific to input_preprocessor_dl for now, let's keep
                 # it here instead of refactoring it out to a generic helper function.
-
                 one_hot_encoded_expr = ["({0}) IS NOT DISTINCT FROM {1}".format(
                     tmp_varname, c) for c in tmp_levels]
                 if self.padding_size:
@@ -189,29 +188,29 @@ class InputDataPreprocessorDL(object):
 
     def _get_var_shape(self, varname):
 
-        shape_list = []
-        for i in varname:
-
-            shape = plpy.execute(
-                "SELECT array_dims({0}) AS shape FROM {1} LIMIT 1".format(
-                i, self.source_table))[0]['shape']
-            shape_list.append(parse_shape(shape))
-        return shape_list
+        shape = plpy.execute(
+            "SELECT array_dims({0}) AS shape FROM {1} LIMIT 1".format(
+            varname, self.source_table))[0]['shape']
+        return parse_shape(shape)
 
     def _get_independent_var_shape(self):
-        return self._get_var_shape(self.independent_varname)
+
+        shape_list = []
+        for i in self.independent_varname:
+            shape_list.append(self._get_var_shape(i))
+        return shape_list
 
     def _get_dependent_var_shape(self):
 
         shape = []
-        if self.num_classes:
-            shape = [self.num_classes]
-        elif self.dependent_levels:
-            for level in self.dependent_levels:
-                shape.append([len(level)])
-        else:
-            for name in self.independent_name:
-                shape.append(self._get_var_shape(name))
+        for counter, dep in enumerate(self.dependent_varname):
+            if self.num_classes:
+                shape.append(self.num_classes[counter])
+            else:
+                if self.dependent_levels[counter]:
+                    shape.append(len(self.dependent_levels[counter]))
+                else:
+                    shape = shape + self._get_var_shape(dep)
         return shape
 
 
@@ -243,8 +242,7 @@ class InputDataPreprocessorDL(object):
         ind_shape = self._get_independent_var_shape()
         ind_shape = [','.join([str(i) for i in tmp_shape]) for tmp_shape in ind_shape]
         dep_shape = self._get_dependent_var_shape()
-        dep_shape = [','.join([str(i) for i in tmp_shape]) for tmp_shape in dep_shape]
-
+        dep_shape = [str(i) for i in dep_shape]
         one_hot_dep_var_array_expr = self.get_one_hot_encoded_dep_var_expr()
 
         # skip normalization step if normalizing_const = 1.0
@@ -273,7 +271,7 @@ class InputDataPreprocessorDL(object):
         shape_sql = []
         bytea_sql = []
 
-        for i,j in zip(self.independent_varname,ind_shape):
+        for i,j in zip(self.independent_varname, ind_shape):
             concat_sql.append("""
                 {self.schema_madlib}.agg_array_concat(ARRAY[{i}_norm::{float32}[]]) AS {i}
                 """.format(**locals()))
@@ -676,11 +674,11 @@ class InputDataPreprocessorDL(object):
                 $__madlib__${self.output_table}$__madlib__$::TEXT AS output_table,
                 ARRAY{self.dependent_varname} AS {dependent_varname_colname},
                 ARRAY{self.independent_varname} AS {independent_varname_colname},
-                $__madlib__${self.dependent_vartype}$__madlib__$::TEXT AS {dependent_vartype_colname},
+                ARRAY{self.dependent_vartype} AS {dependent_vartype_colname},
                 {class_level_str},
                 {self.buffer_size} AS buffer_size,
                 {self.normalizing_const}::{FLOAT32_SQL_TYPE} AS {normalizing_const_colname},
-                {self.num_classes} AS {num_classes_colname},
+                {self.num_classes}::INTEGER[] AS {num_classes_colname},
                 {self.distribution_rules} AS distribution_rules,
                 {self.gpu_config} AS {internal_gpu_config}
             """.format(self=self, class_level_str=class_level_str,
@@ -763,6 +761,8 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
             dependent_varname, independent_varname, buffer_size,
             summary_table[NORMALIZING_CONST_COLNAME], num_classes,
             distribution_rules, self.module_name)
+        self.summary_dep_name = summary_table[DEPENDENT_VARNAME_COLNAME]
+        self.summary_ind_name = summary_table[INDEPENDENT_VARNAME_COLNAME]
         # Update value of dependent_levels from training batch summary table.
         self.dependent_levels = self._get_dependent_levels(summary_table)
 
@@ -789,14 +789,15 @@ class ValidationDataPreprocessorDL(InputDataPreprocessorDL):
         # InputDataPreprocessorDL._set_one_hot_encoding_variables.
 
         dependent_levels_list = []
-        for  counter, dep in enumerate(self.dependent_varname):
-
+        for counter, dep in enumerate(self.summary_dep_name):
             training_dependent_levels = summary_table["{0}_class_values".format(dep)]
             dependent_levels = strip_trailing_nulls_from_class_values(
                 training_dependent_levels)
             if training_dependent_levels:
                 dependent_levels_val_data = self.get_distinct_dependent_levels(
-                    self.source_table, dep, self.dependent_vartype[counter])
+                    self.source_table,
+                    self.dependent_varname[counter],
+                    self.dependent_vartype[counter])
                 unquoted_dependent_levels_val_data = [strip_end_quotes(level, "'")
                                                       for level in dependent_levels_val_data]
                 # Assert to check if the class values in validation data is a subset
