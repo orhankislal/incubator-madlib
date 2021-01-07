@@ -57,8 +57,8 @@ SELECT madlib_keras_predict_byom(
                                  'iris_predict_byom',
                                  'response',
                                  NULL,
-                                 ARRAY['Iris-setosa', 'Iris-versicolor',
-                                  'Iris-virginica']
+                                 ARRAY[ARRAY['Iris-setosa', 'Iris-versicolor',
+                                  'Iris-virginica']::text[]]
                                  );
 
 SELECT assert(
@@ -93,8 +93,8 @@ SELECT madlib_keras_predict_byom(
                                  'iris_predict_byom',
                                  'prob',
                                  NULL,
-                                 ARRAY['Iris-setosa', 'Iris-versicolor',
-                                  'Iris-virginica'],
+                                 ARRAY[ARRAY['Iris-setosa', 'Iris-versicolor',
+                                  'Iris-virginica']::text[]],
                                  1.0
                                  );
 

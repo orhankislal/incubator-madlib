@@ -32,6 +32,7 @@ from madlib_keras_model_selection import ModelSelectionSchema
 from madlib_keras_validator import *
 from madlib_keras_wrapper import *
 
+from internal.db_utils import quote_literal
 from utilities.control import MinWarning
 from utilities.control import OptimizerControl
 from utilities.control import SetGUC
@@ -49,8 +50,6 @@ import json
 from collections import defaultdict
 import random
 import datetime
-mb_dep_var_col = MINIBATCH_OUTPUT_DEPENDENT_COLNAME_DL
-mb_indep_var_col = MINIBATCH_OUTPUT_INDEPENDENT_COLNAME_DL
 dist_key_col = DISTRIBUTION_KEY_COLNAME
 
 """
@@ -112,8 +111,41 @@ class FitMultipleModel():
         self.train_mst_loss = defaultdict(list)
         self.train_mst_metric = defaultdict(list)
         self.info_str = ""
-        self.dep_shape_col = add_postfix(mb_dep_var_col, "_shape")
-        self.ind_shape_col = add_postfix(mb_indep_var_col, "_shape")
+
+        source_summary_table = add_postfix(self.source_table, "_summary")
+        input_tbl_valid(source_summary_table, self.module_name)
+        src_summary_dict = get_source_summary_table_dict(source_summary_table)
+
+        self.mb_dep_var_cols = src_summary_dict['dependent_varname']
+        self.mb_indep_var_cols = src_summary_dict['independent_varname']
+        self.dep_shape_cols = [add_postfix(i, "_shape") for i in self.mb_dep_var_cols]
+        self.ind_shape_cols = [add_postfix(i, "_shape") for i in self.mb_indep_var_cols]
+
+        self.columns_dict = {}
+        self.columns_dict['mb_dep_var_cols'] = self.mb_dep_var_cols
+        self.columns_dict['mb_indep_var_cols'] = self.mb_indep_var_cols
+        self.columns_dict['dep_shape_cols'] = self.dep_shape_cols
+        self.columns_dict['ind_shape_cols'] = self.ind_shape_cols
+
+        self.val_dep_var = None
+        self.val_ind_var = None
+        self.val_dep_shape_cols = None
+        self.val_ind_shape_cols = None
+        if validation_table:
+            validation_summary_table = add_postfix(self.validation_table, "_summary")
+            input_tbl_valid(validation_summary_table, self.module_name)
+            val_summary_dict = get_source_summary_table_dict(validation_summary_table)
+
+            self.val_dep_var = val_summary_dict['dependent_varname']
+            self.val_ind_var = val_summary_dict['independent_varname']
+            self.val_dep_shape_cols = [add_postfix(i, "_shape") for i in self.val_dep_var]
+            self.val_ind_shape_cols = [add_postfix(i, "_shape") for i in self.val_ind_var]
+
+        self.columns_dict['val_dep_var'] = self.val_dep_var
+        self.columns_dict['val_ind_var'] = self.val_ind_var
+        self.columns_dict['val_dep_shape_cols'] = self.val_dep_shape_cols
+        self.columns_dict['val_ind_shape_cols'] = self.val_ind_shape_cols
+
         self.use_gpus = use_gpus
         self.segments_per_host = get_segments_per_host()
         self.cached_source_table = unique_string('cached_source_table')
@@ -142,13 +174,15 @@ class FitMultipleModel():
         if self.warm_start:
             self.model_output_table = unique_string('initial_model')
 
+
         self.fit_validator_train = FitMultipleInputValidator(
             self.source_table, self.validation_table, self.original_model_output_table,
             self.model_selection_table, self.model_selection_summary_table,
-            mb_dep_var_col, mb_indep_var_col, self.num_iterations,
+            self.mb_dep_var_cols, self.mb_indep_var_cols, self.dep_shape_cols,
+            self.ind_shape_cols, self.num_iterations,
             self.model_info_table, self.mst_key_col, self.model_arch_table_col,
             self.metrics_compute_frequency, self.warm_start, self.use_gpus,
-            self.accessible_gpus_for_seg)
+            self.accessible_gpus_for_seg, self.val_dep_var, self.val_ind_var)
         if self.metrics_compute_frequency is None:
             self.metrics_compute_frequency = num_iterations
 
@@ -167,7 +201,7 @@ class FitMultipleModel():
 
         self.dist_key_mapping, self.images_per_seg_train = \
             get_image_count_per_seg_for_minibatched_data_from_db(
-                self.source_table)
+                self.source_table, self.dep_shape_cols[0])
 
         if self.validation_table:
             self.valid_mst_metric_eval_time = defaultdict(list)
@@ -175,7 +209,7 @@ class FitMultipleModel():
             self.valid_mst_metric = defaultdict(list)
             self.dist_key_mapping_valid, self.images_per_seg_valid = \
                 get_image_count_per_seg_for_minibatched_data_from_db(
-                    self.validation_table)
+                    self.validation_table, self.val_dep_shape_cols[0])
         self.mst_weights_tbl = unique_string(desp='mst_weights')
         self.mst_current_schedule_tbl = unique_string(desp='mst_current_schedule')
 
@@ -267,11 +301,12 @@ class FitMultipleModel():
             seg_ids = self.dist_key_mapping_valid
             images_per_seg = self.images_per_seg_valid
             self.info_str += "\n\tValidation set after iteration {0}:".format(epoch)
+
         for mst in self.msts:
             model_arch, _ = get_model_arch_weights(self.model_arch_table, mst[self.model_id_col])
             _, metric, loss = compute_loss_and_metrics(
-                self.schema_madlib, table, "$madlib${0}$madlib$".format(
-                    mst[self.compile_params_col]),
+                self.schema_madlib, table, self.columns_dict,
+                "$madlib${0}$madlib$".format(mst[self.compile_params_col]),
                 model_arch,
                 None,
                 self.use_gpus,
@@ -281,7 +316,8 @@ class FitMultipleModel():
                 [], [], epoch, True,
                 mst[self.object_map_col],
                 self.model_output_table,
-                mst[self.mst_key_col])
+                mst[self.mst_key_col],
+                is_train)
             mst_metric_eval_time[mst[self.mst_key_col]] \
                 .append(time.time() - self.metrics_elapsed_start_time)
             mst_loss[mst[self.mst_key_col]].append(loss)
@@ -498,39 +534,43 @@ class FitMultipleModel():
     def create_model_summary_table(self):
         if self.warm_start:
             plpy.execute("DROP TABLE {0}".format(self.model_summary_table))
-        src_summary_dict = get_source_summary_table_dict(self.fit_validator_train)
-        class_values = src_summary_dict['class_values']
-        class_values_type = src_summary_dict['class_values_type']
-        dep_vartype = src_summary_dict['dep_vartype']
-        dependent_varname = \
-            src_summary_dict['dependent_varname_in_source_table']
-        independent_varname = \
-            src_summary_dict['independent_varname_in_source_table']
-        norm_const = src_summary_dict['norm_const']
+        source_summary_table = self.fit_validator_train.source_summary_table
+        src_summary_dict = get_source_summary_table_dict(source_summary_table)
+
+        class_values_colnames = [add_postfix(i, "_class_values") for i in self.mb_dep_var_cols]
+        # class_values = src_summary_dict['class_values']
+        class_values_type =[get_expr_type(i, source_summary_table) for i in class_values_colnames]
+        # class_values_type = src_summary_dict['class_values_type']
+
+        dependent_varname = src_summary_dict['dependent_varname']
+        independent_varname = src_summary_dict['independent_varname']
+        dep_name_list = ', '.join([quote_literal(i) for i in dependent_varname])
+        ind_name_list = ', '.join([quote_literal(i) for i in independent_varname])
+
+        norm_const = src_summary_dict['normalizing_const']
         self.validation_table = 'NULL' if self.validation_table is None \
             else '$MAD${0}$MAD$'.format(self.validation_table)
-        if class_values is None:
+        if class_values_colnames is None:
             num_classes = 'NULL'
         else:
-            num_classes = len(class_values)
+            num_classes = len(class_values_colnames)
+        class_values_colnames = ' , '.join(class_values_colnames)
         name = 'NULL' if self.name is None else '$MAD${0}$MAD$'.format(self.name)
         descr = 'NULL' if self.description is None else '$MAD${0}$MAD$'.format(self.description)
         object_table = 'NULL' if self.object_table is None \
             else '$MAD${0}$MAD$'.format(self.object_table)
         metrics_iters = self.metrics_iters if self.metrics_iters else 'NULL'
-        class_values_colname = CLASS_VALUES_COLNAME
-        dependent_vartype_colname = DEPENDENT_VARTYPE_COLNAME
         normalizing_const_colname = NORMALIZING_CONST_COLNAME
         float32_sql_type = FLOAT32_SQL_TYPE
-        create_query = plpy.prepare("""
+        create_query = """
                 CREATE TABLE {self.model_summary_table} AS
                 SELECT
                     $MAD${self.source_table}$MAD$::TEXT AS source_table,
                     {self.validation_table}::TEXT AS validation_table,
                     $MAD${self.model_output_table}$MAD$::TEXT AS model,
                     $MAD${self.model_info_table}$MAD$::TEXT AS model_info,
-                    $MAD${dependent_varname}$MAD$::TEXT AS dependent_varname,
-                    $MAD${independent_varname}$MAD$::TEXT AS independent_varname,
+                    ARRAY[{dep_name_list}]::TEXT[] AS dependent_varname,
+                    ARRAY[{ind_name_list}]::TEXT[] AS independent_varname,
                     $MAD${self.model_arch_table}$MAD$::TEXT AS model_arch_table,
                     $MAD${self.model_selection_table}$MAD$::TEXT AS model_selection_table,
                     {object_table}::TEXT AS object_table,
@@ -542,13 +582,14 @@ class FitMultipleModel():
                     '{self.start_training_time}'::TIMESTAMP AS start_training_time,
                     '{self.end_training_time}'::TIMESTAMP AS end_training_time,
                     '{self.version}'::TEXT AS madlib_version,
-                    {num_classes}::INTEGER AS num_classes,
-                    $1 AS {class_values_colname},
-                    $MAD${dep_vartype}$MAD$::TEXT AS {dependent_vartype_colname},
+                    ARRAY[{num_classes}]::INTEGER[] AS num_classes,
+                    {class_values_colnames},
+                    dependent_vartype,
                     {norm_const}::{float32_sql_type} AS {normalizing_const_colname},
                     ARRAY{metrics_iters}::INTEGER[] AS metrics_iters
-            """.format(**locals()), [class_values_type])
-        plpy.execute(create_query, [class_values])
+                FROM {source_summary_table}
+            """.format(**locals())
+        plpy.execute(create_query)
 
     def update_info_table(self, mst, is_train):
         mst_key = mst[self.mst_key_col]
@@ -625,10 +666,11 @@ class FitMultipleModel():
                    **locals())
         plpy.execute(mst_weights_query)
         use_gpus = self.use_gpus if self.use_gpus else False
-        dep_shape_col = self.dep_shape_col
-        ind_shape_col = self.ind_shape_col
-        dep_var = mb_dep_var_col
-        indep_var = mb_indep_var_col
+        #TODO: Fix these to add multi io
+        dep_shape_col = self.dep_shape_cols[0]
+        ind_shape_col = self.ind_shape_cols[0]
+        dep_var = self.mb_dep_var_cols[0]
+        indep_var = self.mb_indep_var_cols[0]
         source_table = self.source_table
         where_clause = "WHERE {self.mst_weights_tbl}.{self.mst_key_col} IS NOT NULL".format(self=self)
         if self.use_caching:
@@ -654,10 +696,11 @@ class FitMultipleModel():
 
         uda_query = """
             CREATE {self.unlogged_table} TABLE {self.weights_to_update_tbl} AS
-            SELECT {self.schema_madlib}.fit_step_multiple_model({mb_dep_var_col},
-                {mb_indep_var_col},
-                {dep_shape_col},
-                {ind_shape_col},
+            SELECT {self.schema_madlib}.fit_step_multiple_model(
+                ARRAY[{mb_dep_var_col}]::BYTEA[],
+                ARRAY[{mb_indep_var_col}]::BYTEA[],
+                ARRAY[{dep_shape_col}],
+                ARRAY[{ind_shape_col}],
                 {self.mst_weights_tbl}.{self.model_arch_col}::TEXT,
                 {self.mst_weights_tbl}.{self.compile_params_col}::TEXT,
                 {self.mst_weights_tbl}.{self.fit_params_col}::TEXT,

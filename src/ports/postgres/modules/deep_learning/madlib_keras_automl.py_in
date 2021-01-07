@@ -211,6 +211,12 @@ class KerasAutoML():
         self.name = name
         self.description = description
 
+        self.source_table_summary = add_postfix(self.source_table, '_summary')
+        self.dependent_varname = plpy.execute(
+            "SELECT dependent_varname FROM {0}".format(
+                self.source_table_summary))[0]['dependent_varname']
+        self.class_values_colnames = [add_postfix(i, "_class_values") for i in self.dependent_varname]
+
         if self.validation_table:
             AutoMLSchema.LOSS_METRIC = 'validation_loss_final'
 
@@ -528,6 +534,8 @@ class KerasAutoML():
         Creates and populates static values related to the AutoML workload.
         :param model_training: Fit Multiple function call object.
         """
+
+        class_values_colnames = ' , '.join(self.class_values_colnames)
         create_query = plpy.prepare("""
                 CREATE TABLE {self.model_summary_table} AS
                 SELECT
@@ -546,20 +554,20 @@ class KerasAutoML():
                     $MAD${self.random_state}$MAD$::TEXT AS random_state,
                     $MAD${self.object_table}$MAD$::TEXT AS object_table,
                     {self.use_gpus} AS use_gpus,
-                    (SELECT metrics_compute_frequency FROM {model_training.model_summary_table})::INTEGER
+                    (SELECT metrics_compute_frequency FROM {model_training.model_summary_table})
                     AS metrics_compute_frequency,
                     $MAD${self.name}$MAD$::TEXT AS name,
                     $MAD${self.description}$MAD$::TEXT AS description,
                     '{self.start_training_time}'::TIMESTAMP AS start_training_time,
                     '{self.end_training_time}'::TIMESTAMP AS end_training_time,
                     (SELECT madlib_version FROM {model_training.model_summary_table}) AS madlib_version,
-                    (SELECT num_classes FROM {model_training.model_summary_table})::INTEGER AS num_classes,
-                    (SELECT class_values FROM {model_training.model_summary_table}) AS class_values,
+                    (SELECT num_classes FROM {model_training.model_summary_table}) AS num_classes,
+                    (SELECT {class_values_colnames} FROM {self.source_table_summary}),
                     (SELECT dependent_vartype FROM {model_training.model_summary_table})
                     AS dependent_vartype,
                     (SELECT normalizing_const FROM {model_training.model_summary_table})
                     AS normalizing_const
-            """.format(self=self, model_training=model_training))
+            """.format(self=self, model_training=model_training, class_values_colnames=class_values_colnames))
 
         with MinWarning('warning'):
             plpy.execute(create_query)
