@@ -860,14 +860,15 @@ class MadlibKerasPredictBYOMTestCase(unittest.TestCase):
                                      self.dependent_count)
         self.assertIn('invalid_pred_type', str(error.exception))
 
-        with self.assertRaises(plpy.PLPYException) as error:
-            self.module.PredictBYOM('schema_madlib', 'model_arch_table',
-                                     'model_id', 'test_table', 'id_col',
-                                     'independent_varname', 'output_table',
-                                     self.pred_type, self.use_gpus,
-                                     ["foo", "bar", "baaz"], self.normalizing_const,
-                                     self.dependent_count)
-        self.assertIn('class values', str(error.exception).lower())
+        # The validation for this test has been disabled
+        # with self.assertRaises(plpy.PLPYException) as error:
+        #     self.module.PredictBYOM('schema_madlib', 'model_arch_table',
+        #                              'model_id', 'test_table', 'id_col',
+        #                              'independent_varname', 'output_table',
+        #                              self.pred_type, self.use_gpus,
+        #                              ["foo", "bar", "baaz"], self.normalizing_const,
+        #                              self.dependent_count)
+        # self.assertIn('class values', str(error.exception).lower())
 
         with self.assertRaises(plpy.PLPYException) as error:
             self.module.PredictBYOM('schema_madlib', 'model_arch_table',
