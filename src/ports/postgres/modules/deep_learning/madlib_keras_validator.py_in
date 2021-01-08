@@ -129,11 +129,11 @@ class InputValidator:
                 """.format(**locals())
                 # This query will fail if an image in independent var does not have the
                 # same number of dimensions as the input_shape.
-                result = plpy.execute(query)[0]['shape']
+                result = plpy.execute(query)
+                result = result[0]['shape']
                 shapes.append(result[1:])
         else:
             for counter, ind in enumerate(independent_varname):
-                plpy.info(ind)
                 array_upper_query = ", ".join("array_upper({0}, {1})".format(
                     ind, i+offset, i) for i in range(len(input_shape[counter])))
                 query = """
@@ -143,7 +143,8 @@ class InputValidator:
                 """.format(array_upper_query, table)
                 # This query will fail if an image in independent var does not have the
                 # same number of dimensions as the input_shape.
-                result = plpy.execute(query)[0]['shape']
+                result = plpy.execute(query)
+                result = result[0]['shape']
                 shapes.append(result)
         _assert(len(shapes) == len(input_shape),
             "model_keras error: The number of dimensions ({0}) of each image"
@@ -162,7 +163,7 @@ class InputValidator:
                     plpy.error("model_keras error: Input shape {0} in the model"
                         " architecture does not match the input shape {1} of column"
                         " {2} in table {3}.".format(
-                            local_input_shape, input_shape_from_table,
+                            local_input_shape[j], local_arch_shape[j],
                             independent_varname, table))
 
     @staticmethod
@@ -182,14 +183,15 @@ class InputValidator:
     def validate_class_values(module_name, class_values, pred_type, model_arch):
         if not class_values:
             return
-        num_classes = len(class_values)
+        num_classes = [len(i) for i in class_values]
         _assert(num_classes == get_num_classes(model_arch),
                 "{0}: The number of class values do not match the " \
                 "provided architecture.".format(module_name))
-        if pred_type == 'prob' and num_classes+1 >= 1600:
-            plpy.error({"{0}: The output will have {1} columns, exceeding the "\
-                " max number of columns that can be created (1600)".format(
-                    module_name, num_classes+1)})
+        for i in num_classes:
+            if pred_type == 'prob' and i+1 >= 1600:
+                plpy.error({"{0}: The output will have {1} columns, exceeding the "\
+                    " max number of columns that can be created (1600)".format(
+                        module_name, i+1)})
 
     @staticmethod
     def validate_model_weights(module_name, model_arch, model_weights):

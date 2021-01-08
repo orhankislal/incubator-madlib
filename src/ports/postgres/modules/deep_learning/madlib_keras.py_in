@@ -1002,7 +1002,6 @@ def internal_keras_eval_transition(state, dependent_var, independent_var,
     x_val = []
     y_val = []
     for counter, shape in enumerate(independent_var_shape):
-
         x_val.append(np_array_float32(independent_var[counter], shape))
     for counter, shape in enumerate(dependent_var_shape):
         y_val.append(np_array_int16(dependent_var[counter], shape))
