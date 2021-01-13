@@ -202,10 +202,7 @@ class BasePredict():
     def set_default_class_values(self, in_class_values, dependent_var_count):
 
         self.class_values = []
-        plpy.info(in_class_values)
         num_classes = get_num_classes(self.model_arch, dependent_var_count)
-
-        plpy.info(num_classes)
         for counter, i in enumerate(in_class_values):
             if (i is None) or (i==[None]):
                 self.class_values.append(range(0, num_classes[counter]))

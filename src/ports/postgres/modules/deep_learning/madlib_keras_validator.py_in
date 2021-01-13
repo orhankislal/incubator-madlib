@@ -184,7 +184,7 @@ class InputValidator:
         if not class_values:
             return
         num_classes = [len(i) for i in class_values]
-        _assert(num_classes == get_num_classes(model_arch),
+        _assert(num_classes == get_num_classes(model_arch, len(class_values)),
                 "{0}: The number of class values do not match the " \
                 "provided architecture.".format(module_name))
         for i in num_classes:
