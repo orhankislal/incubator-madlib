@@ -89,6 +89,44 @@ class InputPreProcessorDLTestCase(unittest.TestCase):
         preprocessor_obj.dependent_levels = [["NULL", "'a'"]]
         preprocessor_obj.input_preprocessor_dl()
 
+    def test_input_preprocessor_multi_dep(self):
+        self.module.get_expr_type = Mock(side_effect = ['integer[]', 'integer[]', 'integer[]'])
+        self.control_module.OptimizerControl.__enter__ = Mock()
+        self.control_module.OptimizerControl.optimizer_control = True
+        self.control_module.OptimizerControl.optimizer_enabled = True
+        preprocessor_obj = self.module.InputDataPreprocessorDL(
+            self.default_schema_madlib,
+            "input",
+            "out",
+            "a,b",
+            self.default_ind_var,
+            self.default_buffer_size,
+            self.default_normalizing_const,
+            [2,2],
+            self.default_distribution_rules,
+            self.default_module_name)
+        preprocessor_obj.dependent_levels = [["NULL", "'a'"],["NULL", "'a'"]]
+        preprocessor_obj.input_preprocessor_dl()
+
+    def test_input_preprocessor_multi_ind(self):
+        self.module.get_expr_type = Mock(side_effect = ['integer[]', 'integer[]', 'integer[]'])
+        self.control_module.OptimizerControl.__enter__ = Mock()
+        self.control_module.OptimizerControl.optimizer_control = True
+        self.control_module.OptimizerControl.optimizer_enabled = True
+        preprocessor_obj = self.module.InputDataPreprocessorDL(
+            self.default_schema_madlib,
+            "input",
+            "out",
+            self.default_dep_var,
+            "c,d",
+            self.default_buffer_size,
+            self.default_normalizing_const,
+            self.default_num_classes,
+            self.default_distribution_rules,
+            self.default_module_name)
+        preprocessor_obj.dependent_levels = [["NULL", "'a'"]]
+        preprocessor_obj.input_preprocessor_dl()
+
     def test_input_preprocessor_null_buffer_size_executes_query(self):
         self.module.get_expr_type = Mock(side_effect = ['integer[]', 'integer[]'])
         self.control_module.OptimizerControl.__enter__ = Mock()
