@@ -389,7 +389,7 @@ SELECT assert(relative_error(test_accuracy, training_metrics_final) < 0.1,
     'Predict output validation failed.')
 FROM iris_multiple_model_info i,
 (SELECT count(*)/(150*0.8) AS test_accuracy FROM
-    (SELECT iris_train.class_text AS actual, iris_predict.class_text AS estimated
+    (SELECT iris_train.class_text AS actual, iris_predict.class_value AS estimated
      FROM iris_predict INNER JOIN iris_train
      ON iris_train.id=iris_predict.id)q
      WHERE q.actual=q.estimated) q2
