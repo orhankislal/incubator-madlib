@@ -660,7 +660,7 @@ class InputDataPreprocessorDL(object):
                 class_level_list.append("{0} AS {1}_{2}".format(class_level_str,
                                                                 self.dependent_varname[i],
                                                                 CLASS_VALUES_COLNAME))
-            class_level_str = ', '.join(class_level_list) if class_level_list else class_level_str
+        class_level_str = ', '.join(class_level_list) if class_level_list else class_level_str
         local_num_classes = ', '.join(local_num_classes)
         if self.num_classes is None:
             self.num_classes = "ARRAY[{0}]::INTEGER[]".format(local_num_classes)

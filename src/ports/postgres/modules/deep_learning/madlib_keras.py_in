@@ -111,6 +111,7 @@ def fit(schema_madlib, source_table, model, model_arch_table,
     columns_dict['dep_shape_cols'] = [add_postfix(i, "_shape") for i in columns_dict['mb_dep_var_cols']]
     columns_dict['ind_shape_cols'] = [add_postfix(i, "_shape") for i in columns_dict['mb_indep_var_cols']]
 
+    multi_dep_count = len(columns_dict['mb_dep_var_cols'])
     val_dep_var = None
     val_ind_var = None
 
@@ -167,7 +168,10 @@ def fit(schema_madlib, source_table, model, model_arch_table,
     # Get the serialized master model
     start_deserialization = time.time()
     model_arch, model_weights = get_model_arch_weights(model_arch_table, model_id)
-    num_classes = get_num_classes(model_arch)
+
+    # The last n layers are the output layers where n is the number of dep vars
+    num_classes = get_num_classes(model_arch, multi_dep_count)
+
     input_shape = get_input_shape(model_arch)
     fit_validator.validate_input_shapes(input_shape)
 

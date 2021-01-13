@@ -45,7 +45,7 @@ def get_input_shape(model_arch):
         return shapes
     plpy.error('Unable to get input shape from model architecture.')
 
-def get_num_classes(model_arch):
+def get_num_classes(model_arch, multi_dep_count):
     """
      We assume that the last dense layer in the model architecture contains the num_classes (units)
      An example can be:
@@ -63,12 +63,13 @@ def get_num_classes(model_arch):
     :return:
     """
     arch_layers = _get_layers(model_arch)
-    i = len(arch_layers) - 1
     num_classes = []
-    while i >= 0:
-        if 'units' in arch_layers[i]['config']:
-            num_classes.append(arch_layers[i]['config']['units'])
-        i -= 1
+
+    layer_count = len(arch_layers) - 1
+    for i in range(multi_dep_count):
+        if 'units' in arch_layers[layer_count-i]['config']:
+            num_classes.append(arch_layers[layer_count-i]['config']['units'])
+
     if num_classes:
         return num_classes
     plpy.error('Unable to get number of classes from model architecture.')

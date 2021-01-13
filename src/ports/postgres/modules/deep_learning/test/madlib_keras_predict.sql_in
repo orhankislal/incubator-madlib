@@ -52,16 +52,17 @@ SELECT madlib_keras_predict(
 SELECT assert(UPPER(pg_typeof(id)::TEXT) = 'INTEGER', 'id column should be INTEGER type')
     FROM cifar10_predict;
 
-SELECT assert(UPPER(pg_typeof(y)::TEXT) =
-    'SMALLINT', 'prediction column should be SMALLINT type')
+SELECT assert(UPPER(pg_typeof(class_value)::TEXT) =
+    'TEXT', 'prediction column should be TEXT type')
     FROM cifar10_predict;
 
 -- Validate correct number of rows returned.
-SELECT assert(COUNT(*)=4, 'Output table of madlib_keras_predict should have two rows')
+SELECT assert(COUNT(*)=4, 'Output table of madlib_keras_predict should have four rows')
 FROM cifar10_predict;
 
+SELECT * FROM cifar10_predict;
 -- First test that all values are in set of class values; if this breaks, it's definitely a problem.
-SELECT assert(y IN (0,1),
+SELECT assert(class_value IN ('0','1'),
     'Predicted value not in set of defined class values for model')
 FROM cifar10_predict;
 
@@ -91,7 +92,7 @@ SELECT assert(UPPER(pg_typeof(prob)::TEXT) =
     'DOUBLE PRECISION', 'column prob should be double precision type')
     FROM  cifar10_predict;
 
-SELECT assert(COUNT(*)=4, 'Predict out table must have exactly three cols.')
+SELECT assert(COUNT(*)=5, 'Predict out table must have exactly five cols.')
 FROM pg_attribute
 WHERE attrelid='cifar10_predict'::regclass AND attnum>0;
 
@@ -110,7 +111,7 @@ SELECT assert(UPPER(pg_typeof(prob)::TEXT) =
     'DOUBLE PRECISION', 'column prob should be double precision type')
     FROM  cifar10_predict;
 
-SELECT assert(COUNT(*)=4, 'Predict out table must have exactly three cols.')
+SELECT assert(COUNT(*)=5, 'Predict out table must have exactly five cols.')
 FROM pg_attribute
 WHERE attrelid='cifar10_predict'::regclass AND attnum>0;
 
@@ -190,7 +191,7 @@ SELECT assert(UPPER(pg_typeof(prob)::TEXT) =
     'DOUBLE PRECISION', 'column prob should be double precision type')
 FROM cifar10_predict;
 
-SELECT assert(COUNT(*)=4, 'Predict out table must have exactly four cols.')
+SELECT assert(COUNT(*)=5, 'Predict out table must have exactly five cols.')
 FROM pg_attribute
 WHERE attrelid='cifar10_predict'::regclass AND attnum>0;
 
@@ -208,13 +209,13 @@ SELECT madlib_keras_predict(
 -- Validate the output datatype of newly created prediction columns
 -- for prediction type = 'response' and class_values 'TEXT' with NULL
 -- as a valid class_values
-SELECT assert(UPPER(pg_typeof(y)::TEXT) =
-    'TEXT', 'prediction column should be TEXT type')
+SELECT assert(UPPER(pg_typeof(class_value)::TEXT) =
+    'TEXT', 'class_value column should be TEXT type')
 FROM  cifar10_predict LIMIT 1;
 
 -- Tests where the assumption is user has one-hot encoded, so class_values
 -- in input summary table will be NULL.
-UPDATE keras_saved_out_summary SET y_class_values=ARRAY[NULL];
+UPDATE keras_saved_out_summary SET y_class_values=ARRAY[NULL]::smallint[];
 
 -- Predict with pred_type=all
 DROP TABLE IF EXISTS cifar10_predict;
@@ -245,8 +246,8 @@ SELECT madlib_keras_predict(
 -- for prediction type = 'response' and class_value = NULL
 -- Returns: Index of class value in user's one-hot encoded data with
 -- highest probability
-SELECT assert(UPPER(pg_typeof(y)::TEXT) =
-    'TEXT', 'column y should be text type')
+SELECT assert(UPPER(pg_typeof(class_value)::TEXT) =
+    'TEXT', 'column class_value should be text type')
 FROM cifar10_predict LIMIT 1;
 
 -- Test predict with INTEGER class_values
