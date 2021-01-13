@@ -709,7 +709,7 @@ class InternalKerasPredictTestCase(unittest.TestCase):
 
         self.all_seg_ids = [0,1,2]
 
-        self.independent_var = [[[240]]]
+        self.independent_var = [[[[240]]]]
         self.total_images_per_seg = [3,3,4]
         self.subject.K.set_session = Mock()
         self.subject.clear_keras_session = Mock()
