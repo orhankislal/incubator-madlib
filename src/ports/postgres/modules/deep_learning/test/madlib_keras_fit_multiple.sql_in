@@ -1,7 +1,6 @@
 m4_include(`SQLCommon.m4')
 m4_changequote(<<<,>>>)
 m4_ifdef(<<<__POSTGRESQL__>>>, -- Skip all fit multiple tests for postgres
-
 ,<<<
 m4_changequote(<!,!>)
 
@@ -783,4 +782,4 @@ DROP FUNCTION madlib_installcheck_deep_learning.fit_transition_multiple_model(
     custom_function_map         BYTEA
 )
 
-)  -- m4_endif postgres
+>>>)  -- m4_endif postgres
