@@ -137,8 +137,6 @@ class FitMultipleModel(object):
         self.train_mst_loss = defaultdict(list)
         self.train_mst_metric = defaultdict(list)
         self.info_str = ""
-        self.dep_shape_col = add_postfix(mb_dep_var_col, "_shape")
-        self.ind_shape_col = add_postfix(mb_indep_var_col, "_shape")
         source_summary_table = add_postfix(self.source_table, "_summary")
         input_tbl_valid(source_summary_table, self.module_name)
         src_summary_dict = get_source_summary_table_dict(source_summary_table)

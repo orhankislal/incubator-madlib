@@ -1,6 +1,7 @@
 m4_include(`SQLCommon.m4')
 m4_changequote(<<<,>>>)
 m4_ifdef(<<<__POSTGRESQL__>>>, -- Skip all fit multiple tests for postgres
+
 ,<<<
 m4_changequote(<!,!>)
 
