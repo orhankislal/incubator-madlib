@@ -31,6 +31,8 @@ from madlib_keras_custom_function import update_builtin_metrics
 
 from utilities.utilities import _assert
 from utilities.utilities import is_platform_pg
+from utilities.utilities import current_user
+from utilities.utilities import is_superuser
 
 import tensorflow as tf
 from tensorflow.keras import backend as K
@@ -309,6 +311,8 @@ def parse_and_validate_fit_params(fit_param_str):
                                                          literal_eval_fit_params,
                                                          accepted_fit_params)
         if 'callbacks' in fit_params_dict:
+            if not is_superuser(current_user()):
+                plpy.error("Only a superuser may use callbacks.")
             try:
                 callbacks=fit_params_dict['callbacks']
                 tree = ast.parse(callbacks, mode='eval')
