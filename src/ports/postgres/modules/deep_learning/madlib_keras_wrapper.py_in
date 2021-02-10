@@ -330,7 +330,7 @@ def parse_and_validate_fit_params(fit_param_str):
             accepted_tb_params = [ 'log_dir', 'histogram_freq', 'batch_size', 'update_freq',
                                    'write_graph', 'write_grad', 'write_images' ]
             tb_params_dict = validate_and_literal_eval_keys(tb_params_dict, accepted_tb_params, accepted_tb_params)
-            fit_params_dict['callbacks'] = [TensorBoard(tb_params_dict)]
+            fit_params_dict['callbacks'] = [TensorBoard(**tb_params_dict)]
 
         return fit_params_dict
     else:
