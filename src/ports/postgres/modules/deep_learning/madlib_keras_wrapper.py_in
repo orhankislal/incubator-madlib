@@ -298,7 +298,7 @@ def parse_optimizer(compile_dict):
 
 
 # Parse the fit parameters into a dictionary.
-def parse_and_validate_fit_params(fit_param_str, current_seg_id):
+def parse_and_validate_fit_params(fit_param_str, current_seg_id=0):
 
     if fit_param_str:
         fit_params_dict = convert_string_of_args_to_dict(fit_param_str, strip_quotes=False)
