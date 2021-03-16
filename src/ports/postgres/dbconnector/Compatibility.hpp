@@ -14,6 +14,10 @@ extern "C" {
     #if PG_VERSION_NUM >= 90300
         #include <access/htup_details.h>
     #endif
+
+    #if PG_VERSION_NUM >= 130000
+        #include <common/hashfn.h>
+    #endif
 }
 
 
@@ -235,12 +239,12 @@ inline ArrayType* madlib_construct_md_array
     char    elmalign
 ){
     return
-        elems ?  
+        elems ?
         construct_md_array(
             elems, nulls, ndims, dims, lbs, elmtype, elmlen, elmbyval,
             elmalign) :
         construct_md_array_zero(
-            ndims, dims, lbs, elmtype, elmlen, elmbyval, elmalign); 
+            ndims, dims, lbs, elmtype, elmlen, elmbyval, elmalign);
 }
 
 inline ArrayType* madlib_construct_array

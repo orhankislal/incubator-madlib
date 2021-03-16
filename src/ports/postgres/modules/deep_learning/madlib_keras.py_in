@@ -1015,6 +1015,7 @@ def internal_keras_eval_transition(state, dependent_var, independent_var,
     GD = kwargs['GD']
     device_name = get_device_name_and_set_cuda_env(accessible_gpus_for_seg[current_seg_id], current_seg_id)
 
+    plpy.info("eval tr")
     """
     This transition function is common to evaluate as well as the fit functions.
     All these calls have a different logic for creating and clear the tensorflow
@@ -1074,8 +1075,17 @@ def internal_keras_eval_transition(state, dependent_var, independent_var,
     image_count = len(y_val[0])
     agg_image_count += image_count
 
-    res = segment_model.evaluate(x_val, y_val)
-
+    plpy.info("before keras")
+    plpy.info(x_val)
+    plpy.info(y_val)
+    try:
+        res = segment_model.evaluate(x_val, y_val)
+    except Exception as inst:
+        plpy.info(type(inst))    # the exception instance
+        plpy.info(inst.args)     # arguments stored in .args
+        plpy.info(inst)          # __str__ allows args to be printed directly,
+        plpy.error(inst)
+    plpy.info("after keras")
     # if metric is None, model.evaluate will only return loss as a scalar
     # Otherwise, it will return a list which has loss and metric
     if multi_output:
