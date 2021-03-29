@@ -801,7 +801,12 @@ public:
             + 1                         // numRows
             + 1                         // batchSize
             + 1                         // nEpochs
-            + 1;                        // loss
+            + 1                         // loss
+            + 1                         // opt_code
+            + 1                         // gamma
+            + 1                         // beta1
+            + 1                         // beta2
+            ;
     }
 
     Handle mStorage;
@@ -819,11 +824,17 @@ private:
      * - N + 4: is_classification (do classification)
      * - N + 5: activation (activation function)
      * - N + 6: coeff (coefficients, design doc: u)
+     * - N + 7: momentum
+     * - N + 8: is_nesterov
 // model is done, now bind numRows
-     * - N + 6 + sizeOfModel: numRows (number of rows processed in this iteration)
-     * - N + 7 + sizeOfModel: batchSize (number of rows processed in this iteration)
-     * - N + 8 + sizeOfModel: nEpochs (number of rows processed in this iteration)
-     * - N + 9 + sizeOfModel: loss (loss value, the sum of squared errors)
+     * - N + 8 + sizeOfModel: numRows (number of rows processed in this iteration)
+     * - N + 9 + sizeOfModel: batchSize (number of rows processed in this iteration)
+     * - N + 10 + sizeOfModel: nEpochs (number of rows processed in this iteration)
+     * - N + 11 + sizeOfModel: loss (loss value, the sum of squared errors)
+     * - N + 12 + sizeOfModel: opt_code
+     * - N + 13 + sizeOfModel: gamma
+     * - N + 14 + sizeOfModel: beta1
+     * - N + 15 + sizeOfModel: beta2
      */
     void rebind() {
         numberOfStages.rebind(&mStorage[0]);
@@ -845,6 +856,10 @@ private:
         batchSize.rebind(&mStorage[N + 9 + sizeOfModel]);
         nEpochs.rebind(&mStorage[N + 10 + sizeOfModel]);
         loss.rebind(&mStorage[N + 11 + sizeOfModel]);
+        opt_code.rebind(&mStorage[N + 12 + sizeOfModel]);
+        gamma.rebind(&mStorage[N + 13 + sizeOfModel]);
+        beta1.rebind(&mStorage[N + 14 + sizeOfModel]);
+        beta2.rebind(&mStorage[N + 15 + sizeOfModel]);
     }
 
 
@@ -864,6 +879,10 @@ public:
     dimension_type batchSize;
     dimension_type nEpochs;
     numeric_type loss;
+    dimension_type opt_code;
+    numeric_type gamma;
+    numeric_type beta1;
+    numeric_type beta2;
 
 };
 

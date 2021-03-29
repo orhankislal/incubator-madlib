@@ -1538,3 +1538,35 @@ SELECT mlp_predict(
     'id',
     'mlp_prediction_batch_output',
     'output');
+
+-- Test rmsprop
+DROP TABLE IF EXISTS mlp_class_batch, mlp_class_batch_summary, mlp_class_batch_standardization;
+
+SELECT madlib.mlp_classification(
+    'iris_data_batch',    -- Source table
+    'mlp_class_batch',    -- Desination table
+    'independent_varname',   -- Input features
+    'dependent_varname',        -- Label
+    ARRAY[5],   -- Number of units per layer
+    'learning_rate_init=0.1,
+    learning_rate_policy=constant,
+    n_iterations=5,
+    tolerance=0,
+    batch_size=5,
+    n_epochs=15,
+    gamma=0.9,
+    is_rmsprop=True',
+    'sigmoid',
+    '',
+    FALSE,           -- Warm start
+    FALSE
+);
+
+DROP TABLE IF EXISTS mlp_prediction_batch_output, mlp_prediction_batch_output_summary, mlp_prediction_batch_output_standardization;
+SELECT mlp_predict(
+    'mlp_class_batch',
+    'iris_data',
+    'id',
+    'mlp_prediction_batch_output',
+    'output');
+

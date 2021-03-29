@@ -26,6 +26,7 @@
 #ifndef MADLIB_MODULES_CONVEX_TASK_MLP_HPP_
 #define MADLIB_MODULES_CONVEX_TASK_MLP_HPP_
 
+#include <math.h>
 #include <dbconnector/dbconnector.hpp>
 
 namespace madlib {
@@ -53,10 +54,17 @@ public:
             const double                        &stepsize);
 
     static double getLossAndUpdateModel(
-            model_type                          &model,
-            const Matrix                        &x,
-            const Matrix                        &y,
-            const double                        &stepsize);
+            model_type              &model,
+            const Matrix            &x_batch,
+            const Matrix            &y_true_batch,
+            const double            &stepsize,
+            const int               &opt_code,
+            const double            &gamma,
+            std::vector<Matrix>     &sqrs,
+            const double            &beta1,
+            const double            &beta2,
+            std::vector<Matrix>     &vs,
+            const int               &t);
 
     static double getLossAndGradient(
             model_type                    &model,
@@ -87,6 +95,10 @@ public:
     static double lambda;
 
 private:
+
+    static const int IS_RMSPROP = 1;
+    static const int IS_ADAM = 2;
+
     static double sigmoid(const double &xi) {
         return 1. / (1. + std::exp(-xi));
     }
@@ -152,15 +164,24 @@ MLP<Model, Tuple>::getLoss(const ColumnVector &y_true,
 template <class Model, class Tuple>
 double
 MLP<Model, Tuple>::getLossAndUpdateModel(
-        model_type           &model,
-        const Matrix         &x_batch,
-        const Matrix         &y_true_batch,
-        const double         &stepsize) {
+        model_type              &model,
+        const Matrix            &x_batch,
+        const Matrix            &y_true_batch,
+        const double            &stepsize,
+        const int               &opt_code,
+        const double            &gamma,
+        std::vector<Matrix>     &sqrs,
+        const double            &beta1,
+        const double            &beta2,
+        std::vector<Matrix>     &vs,
+        const int               &t) {
 
     double total_loss = 0.;
+    double eps_stable = 1.e-18;
 
     // initialize gradient vector
     std::vector<Matrix> total_gradient_per_layer(model.num_layers);
+    Matrix g, v_bias_corr, sqr_bias_corr;
     for (Index k=0; k < model.num_layers; ++k) {
         total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
                                                    model.u[k].cols());
@@ -193,12 +214,50 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
         //  4. make negative for descent
         Matrix regularization = MLP<Model, Tuple>::lambda * model.u[k];
         regularization.row(0).setZero(); // Do not update bias
-        total_gradient_per_layer[k] = -stepsize *
-            (total_gradient_per_layer[k] / static_cast<double>(num_rows_in_batch) +
-             regularization);
+
+        g = total_gradient_per_layer[k] / static_cast<double>(num_rows_in_batch) +
+            regularization;
+        if (opt_code == IS_RMSPROP){
+
+            //for param, sqr in zip(params, sqrs):
+                // g = param.grad / batch_size
+                // sqr[:] = gamma * sqr + (1. - gamma) * nd.square(g)
+                // div = lr * g / nd.sqrt(sqr + eps_stable)
+                // param[:] -= div
+
+            sqrs[k] = gamma * sqrs[k] + (1.0 - gamma) * square(g);
+            total_gradient_per_layer[k] = (-stepsize * g).array() /
+                                          (sqrs[k].array() + eps_stable).sqrt();
+        }
+        else if (opt_code == IS_ADAM){
+
+            // for param, v, sqr in zip(params, vs, sqrs):
+            //     g = param.grad / batch_size
+
+            //     v[:] = beta1 * v + (1. - beta1) * g
+            //     sqr[:] = beta2 * sqr + (1. - beta2) * nd.square(g)
+
+            //     v_bias_corr = v / (1. - beta1 ** t)
+            //     sqr_bias_corr = sqr / (1. - beta2 ** t)
+
+            //     div = lr * v_bias_corr / (nd.sqrt(sqr_bias_corr) + eps_stable)
+            //     param[:] = param - div
+            vs[k] = beta1 * vs[k] + (1.0-beta1) * g;
+            sqrs[k] = beta2 * sqrs[k] + (1.0 - beta2) * square(g);
+
+            v_bias_corr = vs[k] / (1. - pow(beta1,t));
+            sqr_bias_corr = sqrs[k] / (1. - pow(beta2,t));
+
+            total_gradient_per_layer[k] = (-stepsize * v_bias_corr).array() /
+                                          (sqr_bias_corr.array().sqrt() + eps_stable);
+
+        }
+        else {
+            total_gradient_per_layer[k] = -stepsize * g;
+        }
 
         // total_gradient_per_layer is now the update vector
-        if (model.momentum > 0){
+        if (model.momentum > 0 && opt_code == 0){
             model.velocity[k] = model.momentum * model.velocity[k] + total_gradient_per_layer[k];
             if (model.is_nesterov){
                 // Below equation ensures that Nesterov updates are half step

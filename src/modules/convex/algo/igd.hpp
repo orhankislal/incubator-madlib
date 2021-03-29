@@ -116,6 +116,13 @@ IGD<State, ConstState, Task>::merge(state_type &state,
                         size_t(n_rows / batch_size) + size_t(n_rows % batch_size > 0);
 
     double max_loss = 0.0;
+    std::vector<Matrix> sqrs(state.model.num_layers);
+    std::vector<Matrix> vs(state.model.num_layers);
+    int t = 0;
+    for (Index k=0; k < state.model.num_layers; ++k) {
+        sqrs[k] = Matrix::Zero(state.model.u[k].rows(), state.model.u[k].cols());
+        vs[k] = Matrix::Zero(state.model.u[k].rows(), state.model.u[k].cols());
+    }
     for (int curr_epoch=0; curr_epoch < n_epochs; curr_epoch++) {
         double loss = 0.0;
         /*
@@ -146,8 +153,13 @@ IGD<State, ConstState, Task>::merge(state_type &state,
                 Y_batch = tuple.depVar.block(curr_batch_row_index, 0,
                                              batch_size, tuple.depVar.cols());
             }
-            loss += Task::getLossAndUpdateModel(
-                state.model, X_batch, Y_batch, state.stepsize);
+            t++;
+            loss += Task::getLossAndUpdateModel(state.model, X_batch, Y_batch,
+                                                state.stepsize, state.opt_code,
+                                                state.gamma, sqrs, state.beta1,
+                                                state.beta2, vs, t);
+
+
         }
 
         if (max_loss < loss) max_loss = loss;

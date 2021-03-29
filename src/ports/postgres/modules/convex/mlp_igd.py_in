@@ -63,7 +63,7 @@ from utilities.utilities import create_cols_from_array_sql_string
 
 
 
-@MinWarning("error")
+@MinWarning("warning")
 def mlp(schema_madlib, source_table, output_table, independent_varname,
         dependent_varname, hidden_layer_sizes, optimizer_param_str, activation,
         is_classification, weights, warm_start, verbose=False, grouping_col=""):
@@ -105,6 +105,17 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
     n_epochs = optimizer_params['n_epochs']
     momentum = optimizer_params['momentum']
     is_nesterov = optimizer_params['nesterov']
+    beta1 = optimizer_params['beta1']
+    beta2 = optimizer_params['beta2']
+
+    if not optimizer_params['is_rmsprop'] and not optimizer_params['is_adam']:
+        opt_code = 0
+    elif optimizer_params['is_rmsprop']:
+        opt_code = 1
+    elif optimizer_params['is_adam']:
+        opt_code = 2
+    else:
+        plpy.error("MLP: Cannot set both is_rmsprop and is_adam to True.")
 
     # Note that we don't support weights with mini batching yet, so validate
     # this based on is_minibatch_enabled.
@@ -256,7 +267,11 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
         "n_epochs": n_epochs,
         "start_coeff": start_coeff,
         "momentum": momentum,
-        "is_nesterov": is_nesterov
+        "is_nesterov": is_nesterov,
+        "opt_code": opt_code,
+        "gamma": gamma,
+        "beta1": beta1,
+        "beta2": beta2
     }
     # variables to be used by GroupIterationController
     it_args.update({
@@ -295,6 +310,8 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                 elif learning_rate_policy == "step":
                     step_size = step_size_init * gamma**(
                         math.floor(it.iteration / iterations_per_step))
+                elif opt_code != 0:
+                    step_size = step_size_init
                 it.kwargs['step_size'] = step_size
                 if is_minibatch_enabled:
                     train_sql = """
@@ -312,7 +329,11 @@ def mlp(schema_madlib, source_table, output_table, independent_varname,
                             {batch_size}::integer,
                             {n_epochs}::integer,
                             {momentum}::FLOAT8,
-                            {is_nesterov}::boolean
+                            {is_nesterov}::boolean,
+                            {opt_code}::integer,
+                            {gamma}::FLOAT8,
+                            {beta1}::FLOAT8,
+                            {beta2}::FLOAT8
                         )
                         """
                 else:
@@ -633,7 +654,11 @@ def _get_optimizer_params(param_str):
         "n_epochs": (1, int),
         "batch_size": (1, int),
         "momentum": (0.9, float),
-        "nesterov": (True, bool)
+        "nesterov": (True, bool),
+        "is_rmsprop": (False, bool),
+        "is_adam": (False, bool),
+        "beta1": (0.9, float),
+        "beta2": (0.9, float)
     }
     param_defaults = dict([(k, v[0]) for k, v in params_defaults.items()])
     param_types = dict([(k, v[1]) for k, v in params_defaults.items()])

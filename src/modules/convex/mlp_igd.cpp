@@ -187,6 +187,7 @@ mlp_minibatch_transition::run(AnyType &args) {
     // For the first tuple: args[0] is nothing more than a marker that
     // indicates that we should do some initial operations.
     // For other tuples: args[0] holds the computation state until last tuple
+
     MLPMiniBatchState<MutableArrayHandle<double> > state = args[0];
 
     // initialize the state if first tuple
@@ -232,6 +233,10 @@ mlp_minibatch_transition::run(AnyType &args) {
             MLPTask::lambda = state.lambda;
             state.batchSize = static_cast<uint16_t>(args[11].getAs<int>());
             state.nEpochs = static_cast<uint16_t>(args[12].getAs<int>());
+            state.opt_code = static_cast<uint16_t>(args[15].getAs<int>());
+            state.gamma = args[16].getAs<double>();
+            state.beta1 = args[17].getAs<double>();
+            state.beta2 = args[18].getAs<double>();
         }
         // resetting in either case
         state.reset();

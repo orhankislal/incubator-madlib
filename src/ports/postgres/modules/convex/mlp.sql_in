@@ -1461,7 +1461,11 @@ CREATE FUNCTION MADLIB_SCHEMA.mlp_minibatch_transition(
         batch_size         INTEGER,
         n_epochs           INTEGER,
         momentum           DOUBLE PRECISION,
-        is_nesterov        BOOLEAN
+        is_nesterov        BOOLEAN,
+        opt_code           INTEGER,
+        gamma              DOUBLE PRECISION,
+        beta1              DOUBLE PRECISION,
+        beta2              DOUBLE PRECISION
     )
 RETURNS DOUBLE PRECISION[]
 AS 'MODULE_PATHNAME'
@@ -1537,13 +1541,17 @@ CREATE AGGREGATE MADLIB_SCHEMA.mlp_minibatch_step(
         /* batch_size */          INTEGER,
         /* n_epochs */            INTEGER,
         /* momentum */            DOUBLE PRECISION,
-        /* is_nesterov */         BOOLEAN
+        /* is_nesterov */         BOOLEAN,
+        /* opt_code */            INTEGER,
+        /* gamma */               DOUBLE PRECISION,
+        /* beta1 */               DOUBLE PRECISION,
+        /* beta2 */               DOUBLE PRECISION
         )(
     STYPE=DOUBLE PRECISION[],
     SFUNC=MADLIB_SCHEMA.mlp_minibatch_transition,
     m4_ifdef(`__POSTGRESQL__', `', `prefunc=MADLIB_SCHEMA.mlp_minibatch_merge,')
     FINALFUNC=MADLIB_SCHEMA.mlp_minibatch_final,
-    INITCOND='{0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
+    INITCOND='{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}'
 );
 -------------------------------------------------------------------------
 
