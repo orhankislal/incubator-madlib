@@ -161,6 +161,7 @@ MLP<Model, Tuple>::getLoss(const ColumnVector &y_true,
     }
 }
 
+/*
 template <class Model, class Tuple>
 double
 MLP<Model, Tuple>::getLossAndUpdateModel(
@@ -276,6 +277,110 @@ MLP<Model, Tuple>::getLossAndUpdateModel(
 
     return total_loss;
 }
+*/
+
+/*
+# Rosenbrock Function implementation in R
+par <- c(-1.2, 1)
+
+fn <- function(x) {
+  x1 <- x[1]
+  x2 <- x[2]
+  100 * (x2 - x1 * x1) ^ 2 + (1 - x1) ^ 2
+}
+gr <- function(x) {
+  x1 <- x[1]
+  x2 <- x[2]
+  c(
+    -400 * x1 * (x2 - x1 * x1) - 2 * (1 - x1),
+    200 *      (x2 - x1 * x1))
+}
+lr <- 0.001
+mu <- 0.95
+max_iter <- 100
+
+rmsprop <- function(par, fn, gr, lr, gamma, max_iter = 10) {
+  fs <- rep(0, max_iter)
+
+  v <- rep(0, length(par))
+  sqr <- rep(0, length(par))
+  for (i in 1:max_iter) {
+    g <- gr(par)/30
+
+    sqr <- gamma * sqr + (1-gamma) * g * g
+    div <- lr * g / sqrt(sqr + 0.00000000001)
+    par <- par - div
+
+    # store results
+    f <- fn(par)
+    fs[i] <- f
+  }
+
+  list(par = par, f = f, fs = fs)
+}
+
+rms_opt <- rmsprop(par, fn, gr, lr, 0.9, max_iter)
+
+*/
+template <class Model, class Tuple>
+double
+MLP<Model, Tuple>::getLossAndUpdateModel(
+        model_type              &model,
+        const Matrix            &x_batch,
+        const Matrix            &y_true_batch,
+        const double            &stepsize,
+        const int               &opt_code,
+        const double            &gamma,
+        std::vector<Matrix>     &sqrs,
+        const double            &beta1,
+        const double            &beta2,
+        std::vector<Matrix>     &vs,
+        const int               &t) {
+
+    double total_loss = 0.;
+    double eps_stable = 1.e-18;
+
+    // initialize gradient vector
+    std::vector<Matrix> total_gradient_per_layer(model.num_layers);
+    Matrix g, v_bias_corr, sqr_bias_corr;
+    for (Index k=0; k < model.num_layers; ++k) {
+        total_gradient_per_layer[k] = Matrix::Zero(model.u[k].rows(),
+                                                   model.u[k].cols());
+    }
+
+    std::vector<ColumnVector> net, o, delta;
+    Index num_rows_in_batch = x_batch.rows();
+
+    double foo = 100 *
+                 pow((model.u[0](2, 0) - model.u[0](1, 0) * model.u[0](1, 0)),
+                     2) + pow((1 - model.u[0](1, 0)), 2);
+    elog(INFO, "rosenbrock loss %f", foo);
+    total_loss += foo;
+
+    total_gradient_per_layer[0](1, 0) = (-400 * model.u[0](1, 0) *
+                                        (model.u[0](2, 0) -
+                                         model.u[0](1, 0) * model.u[0](1, 0)) -
+                                        2 * (1 - model.u[0](1, 0)));
+    total_gradient_per_layer[0](2, 0) = (200 * (model.u[0](2, 0) - model.u[0](1, 0) * model.u[0](1, 0)));
+
+
+
+    if (opt_code == IS_RMSPROP){
+        g = total_gradient_per_layer[0] / static_cast<double>(num_rows_in_batch);
+        sqrs[0] = gamma * sqrs[0] + (1.0 - gamma) * square(g);
+        total_gradient_per_layer[0] = (-stepsize * g).array() /
+                                      (sqrs[0].array() + eps_stable).sqrt();
+    }else {
+        total_gradient_per_layer[0] = -0.0001 * total_gradient_per_layer[0];
+    }
+
+
+    model.u[0] += total_gradient_per_layer[0];
+
+    return total_loss;
+}
+
+
 
 
 template <class Model, class Tuple>

@@ -193,6 +193,8 @@ struct MLPModel {
             // See design doc for more info
             double span = 0.5 * sqrt(6.0 / (inNumbersOfUnits[k] + inNumbersOfUnits[k+1]));
             u[k] << span * Matrix::Random(u[k].rows(), u[k].cols());
+            u[k](1,0)=-1.2;
+            u[k](2,0)=1;
             velocity[k].setZero();
         }
     }
