@@ -48,18 +48,6 @@ udf:
     - fit_transition_multiple_model:
         rettype: bytea
         argument: bytea, bytea, bytea, integer[], integer[], text, text, text, integer, integer[], integer, integer, integer[], boolean, integer[], bytea, boolean
-    - graph_bfs:
-        rettype: void
-        argument: text, text, text, text, integer, text
-    - graph_bfs:
-        rettype: void
-        argument: text, text, text, text, integer, text, integer
-    - graph_bfs:
-        rettype: void
-        argument: text, text, text, text, integer, text, integer, boolean
-    - graph_bfs:
-        rettype: void
-        argument: text, text, text, text, integer, text, integer, boolean, text
     - internal_keras_eval_transition:
         rettype: real[]
         argument: real[], bytea, bytea, integer[], integer[], text, bytea, text, integer, integer[], integer, integer, integer[], boolean, integer[], boolean
@@ -114,9 +102,6 @@ udf:
     - madlib_keras_predict_byom:
         rettype: void
         argument: character varying, integer, character varying, character varying, character varying, character varying, character varying, boolean, text[], double precision
-    - pagerank:
-        rettype: void
-        argument: text, text, text, text, text, double precision, integer, double precision, character varying, integer[]
     - training_preprocessor_dl:
         rettype: character varying
         argument:
