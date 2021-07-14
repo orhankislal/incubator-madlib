@@ -1403,7 +1403,10 @@ def main(argv):
             maddir_conf = maddir + "/config"
 
         global maddir_lib
-        if os.path.isfile(maddir + "/ports/" + portid + "/" + dbver +
+        if portid == 'greenplum' and \
+           os.path.islink(maddir + "../../../lib/postgresql/libmadlib.so"):
+           maddir_lib = '$libdir/libmadlib.so'
+        elif os.path.isfile(maddir + "/ports/" + portid + "/" + dbver +
                           "/lib/libmadlib.so"):
             maddir_lib = maddir + "/ports/" + portid + "/" + dbver + \
                 "/lib/libmadlib.so"
