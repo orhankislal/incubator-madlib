@@ -17,6 +17,3 @@ PostInstall:
            echo 'For additional options run:';
            echo '$ madpack --help';
            echo 'Release notes and additional documentation can be found at http://madlib.apache.org';"
-PostUninstall:
-echo `hostname`
-rm -f $GPHOME/lib/postgresql/libmadlib.so
